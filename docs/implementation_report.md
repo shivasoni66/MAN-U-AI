@@ -1300,7 +1300,7 @@ Stage 5 performs the final live production acceptance audit for MAN-U-AI across 
 
 #### 5. Live Frontend & Real-Time Behavior
 - **Browser Subagent Navigation:** Loaded `https://man-u-ai-1.onrender.com/` in Chromium browser subagent.
-- **UI State:** Rendered dark industrial theme (`MAN-U-AI | Industrial AI Copilot`), quick demo role selectors, and login form.
+- **UI State:** Rendered dark industrial theme (`MAN-U-AI | Industrial AI Copilot`) and the standard login form. Quick Demo Access controls have been removed from both sign-in and registration views.
 - **Network Behavior:** Authenticated requests target `https://man-u-ai.onrender.com`. Zero network requests target `localhost`.
 - **Error Handling:** Failed login attempts render clear, honest error notifications without synthetic data fallbacks.
 

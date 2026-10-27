@@ -26,7 +26,7 @@ function renderLoginPage() {
   );
 }
 
-describe("Stage 5.2 — LoginPage Quick Demo & Provisioning UI", () => {
+describe("Stage 5.2 — LoginPage Authentication & Provisioning UI", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
@@ -36,42 +36,27 @@ describe("Stage 5.2 — LoginPage Quick Demo & Provisioning UI", () => {
     cleanup();
   });
 
-  it("renders Quick Demo buttons and login form for web panel roles", () => {
+  it("renders the normal sign-in form without Quick Demo Access controls", () => {
     renderLoginPage();
 
-    expect(screen.getByText("Plant Admin")).toBeDefined();
-    expect(screen.getByText("Manager / Operator")).toBeDefined();
-    expect(screen.queryByText("Lead Eng")).toBeNull();
-    expect(screen.queryByText("Field Tech")).toBeNull();
     expect(screen.getByPlaceholderText("manager@plant-line.com")).toBeDefined();
+    expect(screen.getByPlaceholderText("••••••••••••")).toBeDefined();
+    expect(screen.queryByText(/Quick Demo Access/i)).toBeNull();
+    expect(screen.queryByText("Plant Admin")).toBeNull();
+    expect(screen.queryByText("Manager / Operator")).toBeNull();
   });
 
-  it("Quick Demo button does not attempt auto-registration when login fails with 401", async () => {
-    const loginSpy = vi.spyOn(authApi, "login").mockRejectedValue({
-      response: {
-        status: 401,
-        data: {
-          success: false,
-          error: { code: "INVALID_CREDENTIALS", message: "Invalid email or password" },
-        },
-      },
-    });
-
-    const registerSpy = vi.spyOn(authApi, "register").mockResolvedValue({
-      data: { success: true, data: {} as any },
-    });
-
+  it("does not expose a role selector or demo dropdown during registration", () => {
     renderLoginPage();
 
-    fireEvent.click(screen.getByText("Manager / Operator"));
+    fireEvent.click(screen.getByText(/Need plant-level access\\? Request enrollment/i));
 
-    await waitFor(() => {
-      expect(registerSpy).not.toHaveBeenCalled();
-      expect(loginSpy).toHaveBeenCalledWith("marcus.v@plant.io", expect.any(String));
-      expect(
-        screen.getByText(/The account is either not provisioned or credentials are invalid.*administrative CLI/i)
-      ).toBeDefined();
-    });
+    expect(screen.getByPlaceholderText("e.g. John Doe, Lab Manager")).toBeDefined();
+    expect(screen.queryByText(/Quick Demo Access/i)).toBeNull();
+    expect(screen.queryByText("Plant Admin")).toBeNull();
+    expect(screen.queryByText("Manager / Operator")).toBeNull();
+    expect(screen.queryByLabelText(/role/i)).toBeNull();
+    expect(document.querySelector("select")).toBeNull();
   });
 
   it("displays server error message when self-registration is rejected with 403 REGISTRATION_RESTRICTED", async () => {
