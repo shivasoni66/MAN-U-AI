@@ -97,6 +97,36 @@ describe("Manager / Operator Role RBAC & Access Boundaries", () => {
     expect(Array.isArray(res.body.data)).toBe(true);
   });
 
+  it("permits admin to retrieve facility settings (GET /api/v1/settings)", async () => {
+    const res = await request(app)
+      .get("/api/v1/settings")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveProperty("facilityName");
+  });
+
+  it("permits admin to retrieve integration status (GET /api/v1/integrations/status)", async () => {
+    const res = await request(app)
+      .get("/api/v1/integrations/status")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveProperty("mongodb");
+  });
+
+  it("permits admin to retrieve administrative insights (GET /api/v1/analytics/insights)", async () => {
+    const res = await request(app)
+      .get("/api/v1/analytics/insights")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveProperty("totalIndexedDocuments");
+  });
+
   it("permits admin to promote an account to manager (PATCH /api/v1/users/:id/role)", async () => {
     const targetUserId = new mongoose.Types.ObjectId().toString();
     createdUserIds.push(targetUserId);
@@ -257,6 +287,36 @@ describe("Manager / Operator Role RBAC & Access Boundaries", () => {
   it("rejects manager from viewing admin health diagnostics (GET /api/v1/health/diagnostics)", async () => {
     const res = await request(app)
       .get("/api/v1/health/diagnostics")
+      .set("Authorization", `Bearer ${managerToken}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("rejects manager from reading facility settings (GET /api/v1/settings)", async () => {
+    const res = await request(app)
+      .get("/api/v1/settings")
+      .set("Authorization", `Bearer ${managerToken}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("rejects manager from viewing integration status (GET /api/v1/integrations/status)", async () => {
+    const res = await request(app)
+      .get("/api/v1/integrations/status")
+      .set("Authorization", `Bearer ${managerToken}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("rejects manager from accessing administrative insights (GET /api/v1/analytics/insights)", async () => {
+    const res = await request(app)
+      .get("/api/v1/analytics/insights")
       .set("Authorization", `Bearer ${managerToken}`);
 
     expect(res.status).toBe(403);

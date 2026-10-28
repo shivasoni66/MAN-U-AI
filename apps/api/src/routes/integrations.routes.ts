@@ -159,8 +159,8 @@ export async function probeCandidateModel(ai: GoogleGenAI, model: string): Promi
   }
 }
 
-// GET /integrations/status - Current dynamic status of all ecosystem integrations
-integrationsRouter.get("/status", requireAuth, async (req: Request, res: Response) => {
+// GET /integrations/status - Current dynamic status of all ecosystem integrations (Admin only)
+integrationsRouter.get("/status", requireAuth, requireRole(["admin"]), async (req: Request, res: Response) => {
   const isMongoConnected = Boolean(isConnectedToMongo && mongoose.connection.readyState === 1);
   const isGeminiConfigured = Boolean(env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 5);
 

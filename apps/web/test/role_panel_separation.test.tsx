@@ -179,7 +179,7 @@ describe("Role-specific web panel separation", () => {
 
     expect(await screen.findByRole("heading", { name: "Administrator Provisioning & Enrollment" })).toBeDefined();
     expect(screen.getByText(/Public self-registration is restricted in production environments/i)).toBeDefined();
-    expect(screen.getByRole("button", { name: /Submit Admin Enrollment Request/i })).toBeDefined();
+    expect(screen.getByRole("link", { name: /Sign in to Administrator Console/i })).toBeDefined();
   });
 
   it("renders dedicated Manager login and register pages independently", async () => {
@@ -197,7 +197,25 @@ describe("Role-specific web panel separation", () => {
 
     expect(await screen.findByRole("heading", { name: "Plant Operations Enrollment Request" })).toBeDefined();
     expect(screen.getByText(/Public self-registration is restricted in production environments/i)).toBeDefined();
-    expect(screen.getByRole("button", { name: /Request Workspace Enrollment/i })).toBeDefined();
+    expect(screen.getByRole("link", { name: /Sign in to Operations Workspace/i })).toBeDefined();
+  });
+
+  it("renders portal selection page with Admin and Manager links for unauthenticated root visitors", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByRole("heading", { name: "Select Workspace Portal" })).toBeDefined();
+    expect(screen.getByRole("link", { name: /Admin Login/i })).toBeDefined();
+    expect(screen.getByRole("link", { name: /Manager \/ Operator Login/i })).toBeDefined();
   });
 
   it("allows managers to access operations and maintenance workflow routes", async () => {

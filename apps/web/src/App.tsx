@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { AdminRoutes } from "./admin/routes/AdminRoutes";
 import { ManagerRoutes } from "./manager/routes/ManagerRoutes";
 import { LoginPage } from "./pages/LoginPage";
+import { PortalSelectionPage } from "./pages/PortalSelectionPage";
 import { EngineerMobileRequiredPage } from "./pages/EngineerMobileRequiredPage";
 import type { UserRole } from "@man-u-ai/shared";
 
@@ -31,7 +32,9 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 function RoleHomeRedirect() {
   const { user, isAuthenticated, isLoading } = useAuth();
   if (isLoading) return null;
-  if (!isAuthenticated || !user) return <Navigate to="/login" replace />;
+  if (!isAuthenticated || !user) {
+    return <PortalSelectionPage />;
+  }
   return <Navigate to={getRoleLanding(user.role)} replace />;
 }
 

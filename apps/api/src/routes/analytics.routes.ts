@@ -169,8 +169,8 @@ Note: Label generated content truthfully. Do not invent unrecorded failures or f
   }
 });
 
-// GET /analytics/insights - Real database counts and reliability metrics
-analyticsRouter.get("/analytics/insights", requireAuth, async (req: Request, res: Response) => {
+// GET /analytics/insights - Real database counts and reliability metrics (Admin only)
+analyticsRouter.get("/analytics/insights", requireAuth, requireRole(["admin"]), async (req: Request, res: Response) => {
   const rawRange = typeof req.query.range === "string" ? req.query.range.toLowerCase() : "all";
   const validRanges = ["7d", "30d", "all"];
   if (!validRanges.includes(rawRange)) {

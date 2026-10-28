@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Zap, ShieldCheck, ArrowRight, Lock, Mail, User, AlertCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi } from "@/lib/api";
@@ -68,6 +68,14 @@ export function LoginPage() {
           <p className="text-xs text-ink-subtle mt-1 max-w-xs">
             Industrial Multimodal AI Copilot for SOPs, Equipment Manuals & Reliability Engineering
           </p>
+        </div>
+
+        {/* Dedicated portal redirect advisory for legacy URL visitors */}
+        <div className="mb-4 p-2.5 rounded-lg bg-surface-2 border border-hairline text-2xs text-ink-subtle flex items-center justify-between">
+          <span>Legacy login URL</span>
+          <Link to="/" className="text-primary hover:underline font-medium">
+            Open Portal Selection →
+          </Link>
         </div>
 
         {error && (
@@ -156,6 +164,16 @@ export function LoginPage() {
           >
             {isRegister ? "Already have workspace credentials? Sign in" : "Need plant-level access? Request enrollment"}
           </button>
+
+          <div className="flex items-center gap-3 text-xs text-ink-subtle">
+            <Link to="/admin/login" className="hover:text-warning transition-colors font-medium">
+              Admin Login
+            </Link>
+            <span>·</span>
+            <Link to="/manager/login" className="hover:text-emerald-400 transition-colors font-medium">
+              Manager Login
+            </Link>
+          </div>
 
           <div className="flex items-center gap-2 text-2xs text-ink-tertiary">
             <ShieldCheck size={12} className="text-success" />

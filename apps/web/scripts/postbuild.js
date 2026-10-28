@@ -23,6 +23,7 @@ console.log("[postbuild] Created dist/404.html");
 // Pre-generate files for top-level and panel-prefixed client routes so direct
 // navigation and browser refresh work even before a hosting rewrite is configured.
 const routes = [
+  "portal",
   "login",
   "engineer-mobile-required",
   "unsupported-access",

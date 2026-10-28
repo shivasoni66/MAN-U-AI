@@ -1,49 +1,8 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { ArrowRight, Lock, Mail, User, AlertCircle, Info } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
-import { authApi } from "@/lib/api";
+import { Link } from "react-router-dom";
+import { ArrowRight, Info, Cpu, ShieldCheck } from "lucide-react";
 import { AuthLayout } from "@/shared/auth/AuthLayout";
 
 export function ManagerRegisterPage() {
-  const navigate = useNavigate();
-  const { login } = useAuth();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setIsLoading(true);
-
-    try {
-      // The API assigns the restricted viewer role. Manager, Admin, and Engineer
-      // roles must be provisioned or promoted by a Plant Administrator.
-      const res = await authApi.register({ name, email, password });
-      if (res.data?.success && res.data.data) {
-        login(res.data.data.token, res.data.data.user);
-        navigate("/", { replace: true });
-        return;
-      }
-      throw new Error(res.data?.error?.message || "Registration failed");
-    } catch (err: any) {
-      if (err.response?.data?.error?.message) {
-        setError(err.response.data.error.message);
-      } else if (err.code === "ECONNABORTED" || err.message?.includes("timeout")) {
-        setError(
-          "Registration request timed out after 30 seconds. The backend service may be cold starting. Please retry in a moment."
-        );
-      } else {
-        setError(err.message || "Registration failed. Please check inputs.");
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   return (
     <AuthLayout
       title="Plant Operations Enrollment Request"
@@ -58,95 +17,102 @@ export function ManagerRegisterPage() {
           >
             Already have workspace credentials? Sign in
           </Link>
-          <Link
-            to="/admin/login"
-            className="text-ink-tertiary hover:text-ink transition-colors text-2xs"
-          >
-            Switch to Plant Administration Console →
-          </Link>
+          <div className="flex items-center gap-3 text-2xs text-ink-tertiary">
+            <Link to="/admin/register" className="hover:text-ink transition-colors">
+              Need site administrator clearance? →
+            </Link>
+            <span>·</span>
+            <Link to="/" className="hover:text-ink transition-colors">
+              Portal selection
+            </Link>
+          </div>
         </div>
       }
     >
-      <div className="mb-4 p-3 rounded-lg bg-surface-2 border border-hairline space-y-2 text-2xs text-ink-subtle">
-        <div className="flex items-start gap-2">
-          <Info size={14} className="text-primary flex-shrink-0 mt-0.5" />
-          <p>
-            <span className="font-semibold text-ink">Enrollment Notice:</span> Public self-registration is restricted in production environments. Accounts must be provisioned by an administrator.
+      <div className="space-y-4">
+        {/* Notice Alert */}
+        <div className="p-3.5 rounded-xl bg-surface-2 border border-hairline space-y-2 text-xs text-ink-subtle">
+          <div className="flex items-start gap-2.5">
+            <Info size={16} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-ink">Plant Operations Enrollment Policy</p>
+              <p className="text-2xs text-ink-subtle mt-0.5 leading-relaxed">
+                Public self-registration is restricted in production environments. Manager and Operator workstations require authorized administrative account provisioning.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Step-by-step Enrollment Guidance */}
+        <div className="p-4 rounded-xl bg-surface-1 border border-hairline space-y-3">
+          <p className="text-2xs uppercase tracking-wider font-semibold text-ink-subtle">
+            Onboarding procedure for operations personnel
           </p>
+
+          <div className="space-y-3 text-xs">
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center flex-shrink-0 text-2xs font-bold">
+                1
+              </div>
+              <div>
+                <p className="font-medium text-ink">Submit Enrollment to Shift Lead</p>
+                <p className="text-2xs text-ink-subtle">
+                  Request workspace access through your plant shift supervisor or site administrator, providing your employee identification and assigned operating line.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center flex-shrink-0 text-2xs font-bold">
+                2
+              </div>
+              <div>
+                <p className="font-medium text-ink">Administrative Provisioning</p>
+                <p className="text-2xs text-ink-subtle">
+                  A Plant Administrator will provision your account in the Personnel Management registry with verified Manager / Operator operational rights.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3">
+              <div className="w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center flex-shrink-0 text-2xs font-bold">
+                3
+              </div>
+              <div>
+                <p className="font-medium text-ink">Access Operations Workspace</p>
+                <p className="text-2xs text-ink-subtle">
+                  Sign in with your authorized work email and initial password to begin monitoring machinery health, viewing SOP manuals, and generating shift reports.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
-        <p className="border-t border-hairline pt-1.5 text-ink-tertiary">
-          Self-registration enrolls with restricted sandbox access. Plant Manager, Engineer, and Admin roles must be provisioned or promoted by a Plant Administrator.
-        </p>
+
+        {/* Action Buttons */}
+        <div className="pt-2 flex flex-col gap-2.5">
+          <Link
+            to="/manager/login"
+            className="btn-primary w-full py-2.5 flex items-center justify-center gap-2 text-xs font-semibold"
+          >
+            <Cpu size={14} />
+            <span>Sign in to Operations Workspace</span>
+            <ArrowRight size={14} />
+          </Link>
+
+          <Link
+            to="/"
+            className="btn-secondary w-full py-2 flex items-center justify-center gap-2 text-xs"
+          >
+            <span>Return to Workspace Selection</span>
+          </Link>
+        </div>
+
+        {/* Security Badge */}
+        <div className="flex items-center justify-center gap-2 text-3xs text-ink-tertiary pt-2">
+          <ShieldCheck size={12} className="text-success" />
+          <span>Operational Security Verified · Plant Operator Isolation Active</span>
+        </div>
       </div>
-
-      {error && (
-        <div className="mb-4 p-3 rounded-lg bg-danger/10 border border-danger/30 flex items-center gap-2 text-xs text-danger">
-          <AlertCircle size={14} className="flex-shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-2xs font-medium text-ink-subtle mb-1 uppercase tracking-wider">
-            Full Name & Title
-          </label>
-          <div className="relative">
-            <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-tertiary" />
-            <input
-              type="text"
-              required
-              placeholder="e.g. Marcus Vance, Shift Manager"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="input pl-9"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-2xs font-medium text-ink-subtle mb-1 uppercase tracking-wider">
-            Work Email
-          </label>
-          <div className="relative">
-            <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-tertiary" />
-            <input
-              type="email"
-              required
-              placeholder="marcus.v@plant.io"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="input pl-9"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-2xs font-medium text-ink-subtle mb-1 uppercase tracking-wider">
-            Password (min 8 characters)
-          </label>
-          <div className="relative">
-            <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-tertiary" />
-            <input
-              type="password"
-              required
-              placeholder="••••••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="input pl-9"
-            />
-          </div>
-        </div>
-
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="btn-primary w-full py-2.5 mt-2 flex items-center justify-center gap-2 text-sm font-semibold"
-        >
-          {isLoading ? "Authenticating with Backend..." : "Request Workspace Enrollment"}
-          <ArrowRight size={14} />
-        </button>
-      </form>
     </AuthLayout>
   );
 }
