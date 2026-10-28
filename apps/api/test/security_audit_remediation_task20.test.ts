@@ -21,11 +21,13 @@ describe("MAN-U-AI Task 19.9.20 — Security Audit Findings Remediation & Regres
   const viewerOid = toMongoObjectId("usr-sec-viewer");
   const inactiveOid = toMongoObjectId("usr-sec-inactive");
   const demotedOid = toMongoObjectId("usr-sec-demoted");
+  const managerOid = toMongoObjectId("usr-sec-manager");
   const testDocOid = toMongoObjectId("doc-sec-test-doc");
 
   let adminToken: string;
   let engineerToken: string;
   let viewerToken: string;
+  let managerToken: string;
   let inactiveToken: string;
   let demotedTokenWithOldAdminClaim: string;
 
@@ -59,6 +61,11 @@ describe("MAN-U-AI Task 19.9.20 — Security Audit Findings Remediation & Regres
       { name: "Demoted User", email: "sec.demoted@plant.io", passwordHash: "dummy", role: "viewer", isActive: true },
       { upsert: true }
     );
+    await User.findByIdAndUpdate(
+      managerOid,
+      { name: "Security Manager", email: "sec.manager@plant.io", passwordHash: "dummy", role: "manager", isActive: true },
+      { upsert: true }
+    );
 
     // Seed test document
     await DocumentModel.findByIdAndUpdate(
@@ -78,6 +85,7 @@ describe("MAN-U-AI Task 19.9.20 — Security Audit Findings Remediation & Regres
     adminToken = jwt.sign({ id: adminOid.toString(), email: "sec.admin@plant.io", role: "admin" }, env.JWT_SECRET, { expiresIn: "1h" });
     engineerToken = jwt.sign({ id: engineerOid.toString(), email: "sec.engineer@plant.io", role: "engineer" }, env.JWT_SECRET, { expiresIn: "1h" });
     viewerToken = jwt.sign({ id: viewerOid.toString(), email: "sec.viewer@plant.io", role: "viewer" }, env.JWT_SECRET, { expiresIn: "1h" });
+    managerToken = jwt.sign({ id: managerOid.toString(), email: "sec.manager@plant.io", role: "manager" }, env.JWT_SECRET, { expiresIn: "1h" });
     inactiveToken = jwt.sign({ id: inactiveOid.toString(), email: "sec.inactive@plant.io", role: "engineer" }, env.JWT_SECRET, { expiresIn: "1h" });
     // Stale token claiming admin for a demoted user
     demotedTokenWithOldAdminClaim = jwt.sign({ id: demotedOid.toString(), email: "sec.demoted@plant.io", role: "admin" }, env.JWT_SECRET, { expiresIn: "1h" });
@@ -96,7 +104,7 @@ describe("MAN-U-AI Task 19.9.20 — Security Audit Findings Remediation & Regres
 
   afterAll(async () => {
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
-    await User.deleteMany({ _id: { $in: [adminOid, engineerOid, viewerOid, inactiveOid, demotedOid] } });
+    await User.deleteMany({ _id: { $in: [adminOid, engineerOid, viewerOid, inactiveOid, demotedOid, managerOid] } });
     await DocumentModel.deleteOne({ _id: testDocOid });
     await DocumentPermission.deleteMany({ documentId: testDocOid });
     setIsConnectedToMongo(true);
@@ -323,18 +331,32 @@ describe("MAN-U-AI Task 19.9.20 — Security Audit Findings Remediation & Regres
       expect(longFocusRes.body.error.code).toBe("VALIDATION_ERROR");
     });
 
-    it("rejects viewers from GET /api/v1/audit with 403 Forbidden", async () => {
+    it("enforces admin-only access to GET /api/v1/audit, rejecting unauthenticated, engineers, managers, and viewers", async () => {
+      // 1. Unauthenticated request: HTTP 401
+      const resUnauth = await request(app).get("/api/v1/audit");
+      expect(resUnauth.status).toBe(401);
+      expect(resUnauth.body.success).toBe(false);
+
+      // 2. Viewer request: HTTP 403 FORBIDDEN
       const resViewer = await request(app)
         .get("/api/v1/audit")
         .set("Authorization", `Bearer ${viewerToken}`);
       expect(resViewer.status).toBe(403);
       expect(resViewer.body.error.code).toBe("FORBIDDEN");
 
+      // 3. Engineer request: HTTP 403 FORBIDDEN (Admin-only policy strictly enforced)
       const resEng = await request(app)
         .get("/api/v1/audit")
         .set("Authorization", `Bearer ${engineerToken}`);
-      expect(resEng.status).toBe(200);
-      expect(resEng.body.success).toBe(true);
+      expect(resEng.status).toBe(403);
+      expect(resEng.body.error.code).toBe("FORBIDDEN");
+
+      // 4. Manager request: HTTP 403 FORBIDDEN
+      const resMgr = await request(app)
+        .get("/api/v1/audit")
+        .set("Authorization", `Bearer ${managerToken}`);
+      expect(resMgr.status).toBe(403);
+      expect(resMgr.body.error.code).toBe("FORBIDDEN");
     });
 
     it("allows administrators to access GET /api/v1/audit and sanitizes action query filter", async () => {

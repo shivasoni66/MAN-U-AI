@@ -234,8 +234,8 @@ analyticsRouter.get("/analytics/insights", requireAuth, requireRole(["admin"]), 
   }
 });
 
-// GET /audit - Get real audit events from MongoDB (Admins & Engineers only; Viewers strictly forbidden)
-analyticsRouter.get("/audit", requireAuth, requireRole(["admin", "engineer"]), async (req: Request, res: Response) => {
+// GET /audit - Get real audit events from MongoDB (Admin only; Engineers, Managers & Viewers strictly forbidden)
+analyticsRouter.get("/audit", requireAuth, requireRole(["admin"]), async (req: Request, res: Response) => {
   if (!isConnectedToMongo) {
     return res.status(503).json({
       success: false,

@@ -218,6 +218,44 @@ describe("Role-specific web panel separation", () => {
     expect(screen.getByRole("link", { name: /Manager \/ Operator Login/i })).toBeDefined();
   });
 
+  it("renders portal selection page for unauthenticated direct /portal navigation", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/portal"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByRole("heading", { name: "Select Workspace Portal" })).toBeDefined();
+    expect(screen.getByRole("link", { name: /Admin Login/i })).toBeDefined();
+    expect(screen.getByRole("link", { name: /Manager \/ Operator Login/i })).toBeDefined();
+  });
+
+  it("redirects authenticated Admin navigating to /portal to the Admin panel", async () => {
+    renderAppAs("admin", "/portal");
+
+    expect(await screen.findByRole("heading", { name: "Admin Dashboard" })).toBeDefined();
+    expect(screen.getByText("Insights & Analytics")).toBeDefined();
+  });
+
+  it("redirects authenticated Manager navigating to /portal to the Manager panel", async () => {
+    renderAppAs("manager", "/portal");
+
+    expect(await screen.findByRole("heading", { name: "Manager Dashboard" })).toBeDefined();
+    expect(screen.getByText("Manager / Operator Access")).toBeDefined();
+  });
+
+  it("redirects authenticated Engineer navigating to /portal to the mobile app notice", async () => {
+    renderAppAs("engineer", "/portal");
+
+    expect(await screen.findByRole("heading", { name: "Continue in the MAN-U-AI Flutter app" })).toBeDefined();
+  });
+
   it("allows managers to access operations and maintenance workflow routes", async () => {
     renderAppAs("manager", "/manager/operations");
 

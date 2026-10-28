@@ -346,7 +346,7 @@ describe("Production Hardening & Security Audit Suite (P0 & P1 Requirements)", (
     // the route must safely treat non-strings as undefined and not execute arbitrary Mongo query operators.
     const res = await request(app)
       .get("/api/v1/audit?action[$ne]=nonexistent")
-      .set("Authorization", `Bearer ${userAToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);

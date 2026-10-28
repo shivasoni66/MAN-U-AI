@@ -15,6 +15,8 @@ describe("Manager / Operator Role RBAC & Access Boundaries", () => {
   let managerToken: string;
   let viewerId: string;
   let viewerToken: string;
+  let engineerId: string;
+  let engineerToken: string;
   const createdEquipmentIds: string[] = [];
   const createdDocIds: string[] = [];
   const createdUserIds: string[] = [];
@@ -66,6 +68,22 @@ describe("Manager / Operator Role RBAC & Access Boundaries", () => {
     });
     viewerToken = jwt.sign(
       { id: viewerId, email: `viewer-${runId}@plant.io`, name: "Guest Sandbox Viewer", role: "viewer" },
+      env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+
+    // 4. Engineer account
+    engineerId = new mongoose.Types.ObjectId().toString();
+    createdUserIds.push(engineerId);
+    await User.create({
+      _id: engineerId,
+      name: "Field Service Engineer",
+      email: `engineer-${runId}@plant.io`,
+      passwordHash: "mockedHashForTestOnly123!",
+      role: "engineer",
+    });
+    engineerToken = jwt.sign(
+      { id: engineerId, email: `engineer-${runId}@plant.io`, name: "Field Service Engineer", role: "engineer" },
       env.JWT_SECRET,
       { expiresIn: "1h" }
     );
@@ -125,6 +143,16 @@ describe("Manager / Operator Role RBAC & Access Boundaries", () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data).toHaveProperty("totalIndexedDocuments");
+  });
+
+  it("permits admin to retrieve audit logs (GET /api/v1/audit)", async () => {
+    const res = await request(app)
+      .get("/api/v1/audit")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
   });
 
   it("permits admin to promote an account to manager (PATCH /api/v1/users/:id/role)", async () => {
@@ -224,6 +252,23 @@ describe("Manager / Operator Role RBAC & Access Boundaries", () => {
     expect(res.status).toBe(403);
     expect(res.body.success).toBe(false);
     expect(res.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("rejects engineer from accessing administrative audit log (GET /api/v1/audit)", async () => {
+    const res = await request(app)
+      .get("/api/v1/audit")
+      .set("Authorization", `Bearer ${engineerToken}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("rejects unauthenticated requests to audit log (GET /api/v1/audit)", async () => {
+    const res = await request(app).get("/api/v1/audit");
+
+    expect(res.status).toBe(401);
+    expect(res.body.success).toBe(false);
   });
 
   it("rejects manager from listing users (GET /api/v1/users)", async () => {
@@ -361,6 +406,16 @@ describe("Manager / Operator Role RBAC & Access Boundaries", () => {
   it("rejects viewer from accessing operational summaries (GET /api/v1/summaries)", async () => {
     const res = await request(app)
       .get("/api/v1/summaries")
+      .set("Authorization", `Bearer ${viewerToken}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("rejects viewer from accessing administrative audit log (GET /api/v1/audit)", async () => {
+    const res = await request(app)
+      .get("/api/v1/audit")
       .set("Authorization", `Bearer ${viewerToken}`);
 
     expect(res.status).toBe(403);

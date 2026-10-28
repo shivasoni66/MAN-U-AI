@@ -92,8 +92,9 @@ function EngineerOnlyRoute({ children }: { children: React.ReactNode }) {
 function AppRoutes() {
   return (
     <Routes>
-      {/* Root Role-Based Home Redirect */}
+      {/* Root Role-Based Home Redirect & Portal Selection */}
       <Route path="/" element={<RoleHomeRedirect />} />
+      <Route path="/portal" element={<RoleHomeRedirect />} />
 
       {/* Global / Legacy Login */}
       <Route
