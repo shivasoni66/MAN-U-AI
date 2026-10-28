@@ -1,51 +1,24 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
-import { AppShell } from "./components/layout/AppShell";
+import { AdminRoutes } from "./admin/routes/AdminRoutes";
+import { ManagerRoutes } from "./manager/routes/ManagerRoutes";
 import { LoginPage } from "./pages/LoginPage";
-import { AssistantPage } from "./pages/AssistantPage";
-import { KnowledgeLibraryPage } from "./pages/KnowledgeLibraryPage";
-import { ManualViewerPage } from "./pages/ManualViewerPage";
-import { EquipmentPage } from "./pages/EquipmentPage";
-import { SummariesPage } from "./pages/SummariesPage";
-import { InsightsPage } from "./pages/InsightsPage";
-import { ActivityPage } from "./pages/ActivityPage";
-import { IntegrationsPage } from "./pages/IntegrationsPage";
-import { SettingsPage } from "./pages/SettingsPage";
-import { ManagerDashboardPage } from "./pages/ManagerDashboardPage";
 import { EngineerMobileRequiredPage } from "./pages/EngineerMobileRequiredPage";
 import type { UserRole } from "@man-u-ai/shared";
 
-type WebPanel = "admin" | "manager";
+export type WebPanel = "admin" | "manager";
 
-function getWebPanel(role: UserRole | undefined): WebPanel | null {
+export function getWebPanel(role: UserRole | undefined): WebPanel | null {
   if (role === "admin") return "admin";
   if (role === "manager") return "manager";
   return null;
 }
 
-function getRoleLanding(role: UserRole | undefined): string {
+export function getRoleLanding(role: UserRole | undefined): string {
   if (role === "admin") return "/admin";
   if (role === "manager") return "/manager";
   if (role === "engineer") return "/engineer-mobile-required";
   return "/unsupported-access";
-}
-
-function ProtectedPanelRoute({
-  panel,
-  children,
-}: {
-  panel: WebPanel;
-  children: React.ReactNode;
-}) {
-  const { user, isAuthenticated, isLoading } = useAuth();
-
-  if (isLoading) return null;
-  if (!isAuthenticated || !user) return <Navigate to="/login" replace />;
-  if (getWebPanel(user.role) !== panel) {
-    return <Navigate to={getRoleLanding(user.role)} replace />;
-  }
-
-  return <>{children}</>;
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
@@ -98,85 +71,6 @@ function UnsupportedAccessPage() {
   );
 }
 
-function AppRoutes() {
-  return (
-    <Routes>
-      <Route
-        path="/login"
-        element={
-          <PublicRoute>
-            <LoginPage />
-          </PublicRoute>
-        }
-      />
-
-      <Route
-        path="/"
-        element={<RoleHomeRedirect />}
-      />
-
-      <Route
-        path="/admin"
-        element={
-          <ProtectedPanelRoute panel="admin">
-            <AppShell panel="admin" />
-          </ProtectedPanelRoute>
-        }
-      >
-        <Route index element={<InsightsPage />} />
-        <Route path="assistant" element={<AssistantPage />} />
-        <Route path="chat/:conversationId" element={<AssistantPage />} />
-        <Route path="knowledge" element={<KnowledgeLibraryPage />} />
-        <Route path="knowledge/manuals/:documentId" element={<ManualViewerPage />} />
-        <Route path="equipment" element={<EquipmentPage />} />
-        <Route path="summaries" element={<SummariesPage />} />
-        <Route path="insights" element={<InsightsPage />} />
-        <Route path="activity" element={<ActivityPage />} />
-        <Route path="integrations" element={<IntegrationsPage />} />
-        <Route path="settings" element={<SettingsPage />} />
-        <Route path="*" element={<Navigate to="/admin" replace />} />
-      </Route>
-
-      <Route
-        path="/manager"
-        element={
-          <ProtectedPanelRoute panel="manager">
-            <AppShell panel="manager" />
-          </ProtectedPanelRoute>
-        }
-      >
-        <Route index element={<ManagerDashboardPage />} />
-        <Route path="assistant" element={<AssistantPage />} />
-        <Route path="chat/:conversationId" element={<AssistantPage />} />
-        <Route path="knowledge" element={<KnowledgeLibraryPage />} />
-        <Route path="knowledge/manuals/:documentId" element={<ManualViewerPage />} />
-        <Route path="equipment" element={<EquipmentPage />} />
-        <Route path="summaries" element={<SummariesPage />} />
-        <Route path="*" element={<Navigate to="/manager" replace />} />
-      </Route>
-
-      <Route
-        path="/engineer-mobile-required"
-        element={
-          <EngineerOnlyRoute>
-            <EngineerMobileRequiredPage />
-          </EngineerOnlyRoute>
-        }
-      />
-      <Route
-        path="/unsupported-access"
-        element={
-          <AuthenticatedOnlyRoute>
-            <UnsupportedAccessPage />
-          </AuthenticatedOnlyRoute>
-        }
-      />
-
-      <Route path="*" element={<LegacyRouteRedirect />} />
-    </Routes>
-  );
-}
-
 function AuthenticatedOnlyRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
   if (isLoading) return null;
@@ -190,6 +84,54 @@ function EngineerOnlyRoute({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated || !user) return <Navigate to="/login" replace />;
   if (user.role !== "engineer") return <Navigate to={getRoleLanding(user.role)} replace />;
   return <>{children}</>;
+}
+
+function AppRoutes() {
+  return (
+    <Routes>
+      {/* Root Role-Based Home Redirect */}
+      <Route path="/" element={<RoleHomeRedirect />} />
+
+      {/* Global / Legacy Login */}
+      <Route
+        path="/login"
+        element={
+          <PublicRoute>
+            <LoginPage />
+          </PublicRoute>
+        }
+      />
+
+      {/* Admin Panel Independent Route Tree */}
+      <Route path="/admin/*" element={<AdminRoutes />} />
+
+      {/* Manager Panel Independent Route Tree */}
+      <Route path="/manager/*" element={<ManagerRoutes />} />
+
+      {/* Dedicated Engineer Mobile Application Notice */}
+      <Route
+        path="/engineer-mobile-required"
+        element={
+          <EngineerOnlyRoute>
+            <EngineerMobileRequiredPage />
+          </EngineerOnlyRoute>
+        }
+      />
+
+      {/* Restricted Sandbox / Viewer Unsupported Access Notice */}
+      <Route
+        path="/unsupported-access"
+        element={
+          <AuthenticatedOnlyRoute>
+            <UnsupportedAccessPage />
+          </AuthenticatedOnlyRoute>
+        }
+      />
+
+      {/* Legacy Fallback Redirect */}
+      <Route path="*" element={<LegacyRouteRedirect />} />
+    </Routes>
+  );
 }
 
 export default function App() {

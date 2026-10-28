@@ -87,10 +87,10 @@ describe("Role-specific web panel separation", () => {
 
     expect(await screen.findByRole("heading", { name: "Manager Dashboard" })).toBeDefined();
     expect(screen.getByText("Manager / Operator Access")).toBeDefined();
-    expect(screen.getByText("Knowledge Library")).toBeDefined();
+    expect(screen.getAllByText("Knowledge Library").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("System Insights & Analytics")).toBeNull();
     expect(screen.queryByText("Access Control")).toBeNull();
-    expect(screen.queryByText("Integrations")).toBeNull();
+    expect(screen.queryByText("Personnel & Roles")).toBeNull();
   });
 
   it("redirects manager accounts away from direct admin URLs", async () => {
@@ -103,9 +103,10 @@ describe("Role-specific web panel separation", () => {
   it("redirects admin accounts to the Admin panel instead of the Manager panel", async () => {
     renderAppAs("admin", "/manager");
 
-    expect(await screen.findByRole("heading", { name: /System Insights & Reliability Metrics/i })).toBeDefined();
-    expect(screen.getByText("System Insights & Analytics")).toBeDefined();
-    expect(screen.getByText("Access Control")).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Admin Dashboard" })).toBeDefined();
+    expect(screen.getByText("Insights & Analytics")).toBeDefined();
+    expect(screen.getByText("Personnel & Roles")).toBeDefined();
+    expect(screen.getAllByText("Ecosystem Integrations").length).toBeGreaterThanOrEqual(1);
   });
 
   it("routes engineers to the dedicated Flutter-app notice rather than a web panel", async () => {
@@ -113,7 +114,7 @@ describe("Role-specific web panel separation", () => {
 
     expect(await screen.findByRole("heading", { name: "Continue in the MAN-U-AI Flutter app" })).toBeDefined();
     expect(screen.queryByRole("heading", { name: "Manager Dashboard" })).toBeNull();
-    expect(screen.queryByText("System Insights & Analytics")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Admin Dashboard" })).toBeNull();
   });
 
   it("redirects viewer accounts to unsupported-access page and denies manager panel access", async () => {
@@ -123,7 +124,7 @@ describe("Role-specific web panel separation", () => {
     expect(screen.queryByRole("heading", { name: "Manager Dashboard" })).toBeNull();
   });
 
-  it("redirects unauthenticated users to login", async () => {
+  it("redirects unauthenticated users to manager login when accessing /manager", async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -139,7 +140,77 @@ describe("Role-specific web panel separation", () => {
       </QueryClientProvider>
     );
 
-    expect(await screen.findByRole("heading", { name: "MAN-U-AI" })).toBeDefined();
-    expect(screen.getByText("Sign In to Web Workspace")).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Plant Operations Workspace" })).toBeDefined();
+    expect(screen.getByRole("button", { name: /Sign In to Operations Workspace/i })).toBeDefined();
+  });
+
+  it("redirects unauthenticated users to admin login when accessing /admin", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/admin"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByRole("heading", { name: "Plant Administration Console" })).toBeDefined();
+    expect(screen.getByRole("button", { name: /Sign In to Admin Console/i })).toBeDefined();
+  });
+
+  it("renders dedicated Admin login and register pages independently", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/admin/register"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByRole("heading", { name: "Administrator Provisioning & Enrollment" })).toBeDefined();
+    expect(screen.getByText(/Public self-registration is restricted in production environments/i)).toBeDefined();
+    expect(screen.getByRole("button", { name: /Submit Admin Enrollment Request/i })).toBeDefined();
+  });
+
+  it("renders dedicated Manager login and register pages independently", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/manager/register"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByRole("heading", { name: "Plant Operations Enrollment Request" })).toBeDefined();
+    expect(screen.getByText(/Public self-registration is restricted in production environments/i)).toBeDefined();
+    expect(screen.getByRole("button", { name: /Request Workspace Enrollment/i })).toBeDefined();
+  });
+
+  it("allows managers to access operations and maintenance workflow routes", async () => {
+    renderAppAs("manager", "/manager/operations");
+
+    expect(await screen.findByRole("heading", { name: "Operational Work Management" })).toBeDefined();
+    expect(screen.getByText("Operations Center")).toBeDefined();
+  });
+
+  it("allows admins to access dedicated users and analytics routes", async () => {
+    renderAppAs("admin", "/admin/users");
+
+    expect(await screen.findByRole("heading", { name: "Personnel & Role Management" })).toBeDefined();
+    expect(screen.getByText("Provision New Plant Account")).toBeDefined();
   });
 });
