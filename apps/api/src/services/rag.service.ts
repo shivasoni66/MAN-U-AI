@@ -688,7 +688,7 @@ MANDATORY RULES FOR EVIDENCE-GROUNDED INTERACTIVE TROUBLESHOOTING:
    - NEVER fabricate manual instructions, torque ratings, wire numbers, or diagnostic findings.
    - You may ONLY cite source documents and page numbers that actually exist in the RETRIEVED DOCUMENT EVIDENCE above. Never invent external standards or document citations.
 
-2. Safety Preconditions Pinned First:
+2. Safety & Interlocks First:
    - Always put safety warnings, mandatory PPE, and energy isolation requirements at the very beginning of the response.
    - NEVER allow a user to proceed with maintenance before highlighting de-energization and safety interlocks.
 
@@ -708,10 +708,15 @@ MANDATORY RULES FOR EVIDENCE-GROUNDED INTERACTIVE TROUBLESHOOTING:
    - Clearly distinguish between confirmed facts and diagnostic hypotheses.
    - If retrieval does not provide sufficient evidence, explicitly state the limitation.
 
-${relevantFigures.length > 0 ? `6. Multimodal & Figure-Aware Grounding:
-   - Ground visual observations ONLY in what is directly legible in the attached figures.
-   - Cite Figure ID, Document, and Page number.` : `6. Figure Mentions in Text:
-   - No figure images are attached. Refer to figures strictly as textual manual references.`}
+${relevantFigures.length > 0 ? `6. Multimodal & Figure-Aware Grounding (Strict Rules):
+   - Ground visual observations ONLY in what is directly legible and visible in the attached figures.
+   - Distinguish each claim as either "Direct Visual Observation from [Figure ID]" or "Procedural Guidance from Manual Text".
+   - ZERO FABRICATION: NEVER hallucinate, guess, or invent component labels, terminal/pin numbers, wire colors, dimensions, warning icons, or unreadable annotations.
+   - If an image is unreadable, blurry, or lacks a specific requested detail, explicitly state that the detail is not legible.
+   - Cite Figure ID, Document, and Page number.` : `6. Figure Mentions in Text (No Figures Attached):
+   - No figure or schematic images are attached to this query.
+   - Refer to figures strictly as textual manual references.
+   - Do NOT claim to have visually examined or observed any figure or diagram.`}
 
 Respond in clean, professional GitHub Markdown:`;
 

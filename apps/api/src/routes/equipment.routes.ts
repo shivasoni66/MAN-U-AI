@@ -11,40 +11,9 @@ export const equipmentRouter: Router = Router();
 // GET / - List all equipment records
 equipmentRouter.get("/", requireAuth, async (req: Request, res: Response) => {
   if (!isConnectedToMongo) {
-    return res.json({
-      success: true,
-      data: [
-        {
-          id: "equip-p102",
-          name: "Centrifugal Slurry Pump P-102",
-          type: "Centrifugal Slurry Pump",
-          model: "Warman AH 4/3",
-          manufacturer: "Flowserve",
-          serialNumber: "FS-2023-9981",
-          location: "Line 1 - Slurry Preparation",
-          documentIds: ["mock-doc-1"],
-        },
-        {
-          id: "equip-hp400",
-          name: "Hydraulic Stamping Press HP-400",
-          type: "Hydraulic Press",
-          model: "Schuler 400-T",
-          manufacturer: "Schuler Pressen",
-          serialNumber: "SC-400-091",
-          location: "Line 3 - Main Fabrication",
-          documentIds: ["mock-doc-2"],
-        },
-        {
-          id: "equip-ac300",
-          name: "Rotary Screw Air Compressor AC-300",
-          type: "Air Compressor",
-          model: "Atlas Copco GA-90+",
-          manufacturer: "Atlas Copco",
-          serialNumber: "AC-8812-B",
-          location: "Utility Room B",
-          documentIds: ["mock-doc-3"],
-        },
-      ],
+    return res.status(503).json({
+      success: false,
+      error: { code: "SERVICE_UNAVAILABLE", message: "Database connection unavailable for equipment listing" },
     });
   }
 

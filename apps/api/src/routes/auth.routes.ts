@@ -139,8 +139,7 @@ authRouter.post("/login", authLimiter, async (req: Request, res: Response) => {
   if (!isConnectedToMongo) {
     const isOfflineAuthPermitted =
       process.env.NODE_ENV !== "production" &&
-      (process.env.ALLOW_OFFLINE_AUTH === "true" ||
-        (process.env.NODE_ENV === "test" && process.env.ALLOW_OFFLINE_AUTH !== "false"));
+      process.env.ALLOW_OFFLINE_AUTH === "true";
 
     if (isOfflineAuthPermitted) {
       const demoAccounts = [
@@ -274,10 +273,15 @@ authRouter.post("/login", authLimiter, async (req: Request, res: Response) => {
 });
 
 authRouter.get("/me", requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  const user = req.user;
   return res.json({
     success: true,
     data: {
-      user: req.user,
+      id: user?.id,
+      email: user?.email,
+      name: user?.name,
+      role: user?.role,
+      user,
     },
   });
 });

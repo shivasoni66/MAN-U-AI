@@ -74,7 +74,7 @@ conversationsRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res
   if (req.body.title !== undefined && req.body.title !== null && typeof req.body.title !== "string") {
     return res.status(400).json({
       success: false,
-      error: { code: "BAD_REQUEST", message: "Title must be a string" },
+      error: { code: "VALIDATION_ERROR", message: "Title must be a string" },
     });
   }
 
@@ -101,7 +101,7 @@ conversationsRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res
   if (equipmentId && !mongoose.Types.ObjectId.isValid(equipmentId)) {
     return res.status(400).json({
       success: false,
-      error: { code: "BAD_REQUEST", message: "Invalid equipment ID format" },
+      error: { code: "INVALID_EQUIPMENT_ID", message: "Invalid equipment ID format" },
     });
   }
 
