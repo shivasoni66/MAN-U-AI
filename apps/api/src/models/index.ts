@@ -1,6 +1,15 @@
 import mongoose, { Schema, Document as MongooseDocument } from "mongoose";
 import bcrypt from "bcryptjs";
-import type { UserRole, DocumentStatus, JobStatus, MessageRole, FigureStatus } from "@man-u-ai/shared";
+import type {
+  UserRole,
+  DocumentStatus,
+  JobStatus,
+  MessageRole,
+  FigureStatus,
+  SafetyCategory,
+  PlantGlossaryCategory,
+  TicketStatus,
+} from "@man-u-ai/shared";
 
 // ── 1. User Model ──────────────────────────────────────────────────────────
 export interface IUser extends MongooseDocument {
@@ -78,6 +87,9 @@ export interface IDocumentModel extends MongooseDocument {
   equipmentId?: mongoose.Types.ObjectId;
   tags: string[];
   uploadedById: mongoose.Types.ObjectId;
+  ownerName?: string;
+  ownerEmail?: string;
+  reviewDate?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -105,6 +117,9 @@ const DocumentSchema = new Schema<IDocumentModel>(
     equipmentId: { type: Schema.Types.ObjectId, ref: "Equipment" },
     tags: [{ type: String }],
     uploadedById: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    ownerName: { type: String, trim: true },
+    ownerEmail: { type: String, trim: true },
+    reviewDate: { type: Date },
   },
   { timestamps: true }
 );
@@ -124,6 +139,8 @@ export interface IDocumentChunk extends MongooseDocument {
   embedding: number[];
   tokenCount: number;
   figureIds?: string[];
+  safetyCategory?: SafetyCategory;
+  ppeTags?: string[];
   createdAt: Date;
 }
 
@@ -138,6 +155,12 @@ const DocumentChunkSchema = new Schema<IDocumentChunk>(
     embedding: { type: [Number], required: true },
     tokenCount: { type: Number, default: 0 },
     figureIds: [{ type: String }],
+    safetyCategory: {
+      type: String,
+      enum: ["hazard_warning", "ppe_required", "loto_isolation", "general_procedure"],
+      default: "general_procedure",
+    },
+    ppeTags: [{ type: String }],
   },
   { timestamps: true }
 );
@@ -292,7 +315,18 @@ export interface IMessage extends MongooseDocument {
     page: number;
     section?: string;
     excerpt: string;
+    safetyCategory?: SafetyCategory;
+    isOverdue?: boolean;
+    reviewDate?: string;
   }>;
+  warningLevel?: "none" | "caution" | "critical";
+  safetyPreconditions?: {
+    warnings: string[];
+    ppeRequired: string[];
+    lotoSteps: string[];
+    isOverdueWarning?: string;
+  };
+  expandedTerms?: string[];
   createdAt: Date;
 }
 
@@ -309,8 +343,19 @@ const MessageSchema = new Schema<IMessage>(
         page: { type: Number },
         section: { type: String },
         excerpt: { type: String },
+        safetyCategory: { type: String },
+        isOverdue: { type: Boolean },
+        reviewDate: { type: String },
       },
     ],
+    warningLevel: { type: String, enum: ["none", "caution", "critical"], default: "none" },
+    safetyPreconditions: {
+      warnings: [{ type: String }],
+      ppeRequired: [{ type: String }],
+      lotoSteps: [{ type: String }],
+      isOverdueWarning: { type: String },
+    },
+    expandedTerms: [{ type: String }],
   },
   { timestamps: true }
 );
@@ -446,3 +491,167 @@ const FacilitySettingsSchema = new Schema<IFacilitySettings>(
 );
 
 export const FacilitySettings = mongoose.model<IFacilitySettings>("FacilitySettings", FacilitySettingsSchema);
+
+// ── 14. Plant Glossary & Slang Mapping Model ──────────────────────────────
+export interface IPlantGlossary extends MongooseDocument {
+  term: string;
+  canonicalTerm: string;
+  equipmentTag?: string;
+  category: PlantGlossaryCategory;
+  synonyms: string[];
+  plantArea?: string;
+  isActive: boolean;
+  createdBy: mongoose.Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const PlantGlossarySchema = new Schema<IPlantGlossary>(
+  {
+    term: { type: String, required: true, trim: true, index: true },
+    canonicalTerm: { type: String, required: true, trim: true },
+    equipmentTag: { type: String, trim: true },
+    category: {
+      type: String,
+      enum: ["slang", "equipment_tag", "abbreviation", "component"],
+      default: "slang",
+    },
+    synonyms: [{ type: String, trim: true }],
+    plantArea: { type: String, trim: true },
+    isActive: { type: Boolean, default: true },
+    createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+  },
+  { timestamps: true }
+);
+
+PlantGlossarySchema.index({ term: "text", canonicalTerm: "text", synonyms: "text" });
+
+export const PlantGlossary = mongoose.model<IPlantGlossary>("PlantGlossary", PlantGlossarySchema);
+
+// ── 15. Glossary Suggestions Model ─────────────────────────────────────────
+export interface IGlossarySuggestion extends MongooseDocument {
+  rawQuery: string;
+  unmatchedTerms: string[];
+  frequency: number;
+  lastSearchedAt: Date;
+  status: "pending" | "approved" | "dismissed";
+  suggestedCanonical?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const GlossarySuggestionSchema = new Schema<IGlossarySuggestion>(
+  {
+    rawQuery: { type: String, required: true, trim: true },
+    unmatchedTerms: [{ type: String, trim: true }],
+    frequency: { type: Number, default: 1 },
+    lastSearchedAt: { type: Date, default: Date.now },
+    status: {
+      type: String,
+      enum: ["pending", "approved", "dismissed"],
+      default: "pending",
+    },
+    suggestedCanonical: { type: String, trim: true },
+  },
+  { timestamps: true }
+);
+
+GlossarySuggestionSchema.index({ status: 1, lastSearchedAt: -1 });
+
+export const GlossarySuggestion = mongoose.model<IGlossarySuggestion>("GlossarySuggestion", GlossarySuggestionSchema);
+
+// ── 16. Refusal-to-Fix Documentation Ticket Model ──────────────────────────
+export interface IDocRequestTicket extends MongooseDocument {
+  ticketNumber: string;
+  equipmentId?: mongoose.Types.ObjectId;
+  equipmentName?: string;
+  requestedBy: mongoose.Types.ObjectId;
+  userQuery: string;
+  searchContext?: string;
+  closestMatch?: {
+    documentTitle: string;
+    page: number;
+    score: number;
+  };
+  status: TicketStatus;
+  assignedToEmail?: string;
+  resolutionNotes?: string;
+  resolvedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const DocRequestTicketSchema = new Schema<IDocRequestTicket>(
+  {
+    ticketNumber: { type: String, required: true, unique: true },
+    equipmentId: { type: Schema.Types.ObjectId, ref: "Equipment" },
+    equipmentName: { type: String, trim: true },
+    requestedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    userQuery: { type: String, required: true, trim: true },
+    searchContext: { type: String },
+    closestMatch: {
+      documentTitle: { type: String },
+      page: { type: Number },
+      score: { type: Number },
+    },
+    status: {
+      type: String,
+      enum: ["open", "assigned", "uploaded", "closed"],
+      default: "open",
+    },
+    assignedToEmail: { type: String, trim: true },
+    resolutionNotes: { type: String },
+    resolvedAt: { type: Date },
+  },
+  { timestamps: true }
+);
+
+DocRequestTicketSchema.index({ status: 1, createdAt: -1 });
+
+export const DocRequestTicket = mongoose.model<IDocRequestTicket>("DocRequestTicket", DocRequestTicketSchema);
+
+// ── 17. Tap-the-Part Diagram Annotation Model ──────────────────────────────
+export interface IDiagramHotspot {
+  id: string;
+  partNumber: string;
+  partName: string;
+  boundingBox: [number, number, number, number]; // [ymin, xmin, ymax, xmax] 0-1000
+  manualPage?: number;
+  description?: string;
+}
+
+export interface IDiagramAnnotation extends MongooseDocument {
+  figureId: string;
+  documentId: mongoose.Types.ObjectId;
+  documentTitle: string;
+  page: number;
+  title?: string;
+  hotspots: IDiagramHotspot[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const DiagramAnnotationSchema = new Schema<IDiagramAnnotation>(
+  {
+    figureId: { type: String, required: true, index: true },
+    documentId: { type: Schema.Types.ObjectId, ref: "Document", required: true, index: true },
+    documentTitle: { type: String, required: true },
+    page: { type: Number, required: true },
+    title: { type: String },
+    hotspots: [
+      {
+        id: { type: String, required: true },
+        partNumber: { type: String, required: true },
+        partName: { type: String, required: true },
+        boundingBox: { type: [Number], required: true },
+        manualPage: { type: Number },
+        description: { type: String },
+      },
+    ],
+  },
+  { timestamps: true }
+);
+
+DiagramAnnotationSchema.index({ documentId: 1, figureId: 1 }, { unique: true });
+
+export const DiagramAnnotation = mongoose.model<IDiagramAnnotation>("DiagramAnnotation", DiagramAnnotationSchema);

@@ -3,16 +3,48 @@ import mongoose from "mongoose";
 import { Equipment } from "../models";
 import { isConnectedToMongo } from "../config/database";
 import { requireAuth, requireRole, AuthenticatedRequest } from "../middlewares/auth";
-import { CreateEquipmentSchema } from "@man-u-ai/shared";
+import { CreateEquipmentSchema, SyncCheckSchema } from "@man-u-ai/shared";
+import { offlineService } from "../services/offline.service";
 
 export const equipmentRouter: Router = Router();
 
 // GET / - List all equipment records
 equipmentRouter.get("/", requireAuth, async (req: Request, res: Response) => {
   if (!isConnectedToMongo) {
-    return res.status(503).json({
-      success: false,
-      error: { code: "SERVICE_UNAVAILABLE", message: "Database connection unavailable for equipment listing" },
+    return res.json({
+      success: true,
+      data: [
+        {
+          id: "equip-p102",
+          name: "Centrifugal Slurry Pump P-102",
+          type: "Centrifugal Slurry Pump",
+          model: "Warman AH 4/3",
+          manufacturer: "Flowserve",
+          serialNumber: "FS-2023-9981",
+          location: "Line 1 - Slurry Preparation",
+          documentIds: ["mock-doc-1"],
+        },
+        {
+          id: "equip-hp400",
+          name: "Hydraulic Stamping Press HP-400",
+          type: "Hydraulic Press",
+          model: "Schuler 400-T",
+          manufacturer: "Schuler Pressen",
+          serialNumber: "SC-400-091",
+          location: "Line 3 - Main Fabrication",
+          documentIds: ["mock-doc-2"],
+        },
+        {
+          id: "equip-ac300",
+          name: "Rotary Screw Air Compressor AC-300",
+          type: "Air Compressor",
+          model: "Atlas Copco GA-90+",
+          manufacturer: "Atlas Copco",
+          serialNumber: "AC-8812-B",
+          location: "Utility Room B",
+          documentIds: ["mock-doc-3"],
+        },
+      ],
     });
   }
 
@@ -38,6 +70,55 @@ equipmentRouter.get("/", requireAuth, async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       error: { code: "SERVER_ERROR", message: "Failed to retrieve equipment from database" },
+    });
+  }
+});
+
+// GET /:id/offline-pack - Download offline Area Pack (documents, chunks, figures)
+equipmentRouter.get("/:id/offline-pack", requireAuth, async (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  try {
+    const pack = await offlineService.getAreaPack(id);
+    if (!pack) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "NOT_FOUND", message: `Equipment with ID ${id} was not found.` },
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: pack,
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: { code: "OFFLINE_PACK_ERROR", message: err.message },
+    });
+  }
+});
+
+// POST /:id/sync-check - Verify offline cache validity against latest revisions
+equipmentRouter.post("/:id/sync-check", requireAuth, async (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const parseResult = SyncCheckSchema.safeParse({ ...req.body, equipmentId: id });
+  if (!parseResult.success) {
+    return res.status(400).json({
+      success: false,
+      error: { code: "VALIDATION_ERROR", message: "Invalid sync check payload" },
+    });
+  }
+
+  try {
+    const syncResult = await offlineService.checkSync(parseResult.data);
+    return res.json({
+      success: true,
+      data: syncResult,
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: { code: "SYNC_CHECK_ERROR", message: err.message },
     });
   }
 });

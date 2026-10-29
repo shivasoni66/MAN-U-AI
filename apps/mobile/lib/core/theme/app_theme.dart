@@ -1,172 +1,133 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
+import 'app_typography.dart';
 
+/// Terminal Cobalt Mobile AppTheme
 class AppTheme {
   AppTheme._();
 
   static ThemeData get darkTheme {
-    final interFont = GoogleFonts.inter().fontFamily;
+    final jetbrainsMonoFamily = GoogleFonts.jetBrainsMono().fontFamily;
 
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      fontFamily: interFont,
-      scaffoldBackgroundColor: AppColors.canvas,
+      fontFamily: jetbrainsMonoFamily,
+      scaffoldBackgroundColor: AppColors.surface,
       colorScheme: const ColorScheme.dark(
-        surface: AppColors.surface1,
+        surface: AppColors.surfaceAlt,
         primary: AppColors.primary,
-        onPrimary: AppColors.ink,
+        onPrimary: AppColors.onPrimary,
         secondary: AppColors.primaryHover,
-        onSecondary: AppColors.ink,
-        error: AppColors.danger,
-        onError: AppColors.ink,
-        outline: AppColors.hairline,
+        onSecondary: AppColors.onPrimary,
+        error: AppColors.error,
+        onError: AppColors.onPrimary,
+        outline: AppColors.border,
       ),
-      textTheme: const TextTheme(
-        displayLarge: TextStyle(
-          color: AppColors.ink,
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.03,
-        ),
-        headlineMedium: TextStyle(
-          color: AppColors.ink,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.02,
-        ),
-        titleLarge: TextStyle(
-          color: AppColors.ink,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.01,
-        ),
-        titleMedium: TextStyle(
-          color: AppColors.ink,
-          fontWeight: FontWeight.w500,
-        ),
-        bodyLarge: TextStyle(
-          color: AppColors.inkMuted,
-          fontSize: 15.0,
-          height: 1.5,
-        ),
-        bodyMedium: TextStyle(
-          color: AppColors.inkMuted,
-          fontSize: 14.0,
-          height: 1.5,
-        ),
-        bodySmall: TextStyle(
-          color: AppColors.inkSubtle,
-          fontSize: 12.0,
-          height: 1.4,
-        ),
-        labelLarge: TextStyle(
-          color: AppColors.ink,
-          fontWeight: FontWeight.w500,
-          fontSize: 14.0,
-        ),
+      textTheme: TextTheme(
+        displayLarge: AppTypography.displayLg,
+        headlineLarge: AppTypography.headlineLg,
+        headlineMedium: AppTypography.headlineMd,
+        titleLarge: AppTypography.headlineMd,
+        titleMedium: AppTypography.bodyMd,
+        titleSmall: AppTypography.bodySm,
+        bodyLarge: AppTypography.bodyMd,
+        bodyMedium: AppTypography.bodyMdRegular,
+        bodySmall: AppTypography.bodySm,
+        labelLarge: AppTypography.labelMd,
+        labelMedium: AppTypography.labelUppercase,
+        labelSmall: AppTypography.caption,
       ),
       cardTheme: CardThemeData(
-        color: AppColors.surface1,
+        color: AppColors.surfaceAlt,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8.0),
-          side: const BorderSide(color: AppColors.hairline),
+          side: const BorderSide(color: AppColors.border, width: 1.0),
         ),
         margin: EdgeInsets.zero,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: AppColors.surface3,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 14.0),
-        hintStyle: const TextStyle(
-          color: AppColors.inkTertiary,
-          fontSize: 14.0,
-          fontWeight: FontWeight.w400,
+        fillColor: AppColors.surfaceMuted,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
+        hintStyle: AppTypography.labelUppercase.copyWith(
+          color: AppColors.onSurfaceVariant,
         ),
-        labelStyle: const TextStyle(
-          color: AppColors.inkSubtle,
-          fontSize: 14.0,
-          fontWeight: FontWeight.w500,
+        labelStyle: AppTypography.labelUppercase.copyWith(
+          color: AppColors.onSurfaceVariant,
         ),
-        errorStyle: const TextStyle(
-          color: AppColors.danger,
-          fontSize: 12.0,
-          fontWeight: FontWeight.w500,
+        errorStyle: AppTypography.bodySm.copyWith(
+          color: AppColors.error,
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8.0),
-          borderSide: const BorderSide(color: AppColors.hairline),
+          borderSide: const BorderSide(color: AppColors.border, width: 1.0),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8.0),
-          borderSide: const BorderSide(color: AppColors.hairline),
+          borderSide: const BorderSide(color: AppColors.border, width: 1.0),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8.0),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+          borderSide: const BorderSide(color: AppColors.primary, width: 2.0),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8.0),
-          borderSide: const BorderSide(color: AppColors.danger),
+          borderSide: const BorderSide(color: AppColors.error, width: 1.0),
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8.0),
-          borderSide: const BorderSide(color: AppColors.danger, width: 1.5),
+          borderSide: const BorderSide(color: AppColors.error, width: 2.0),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
-          foregroundColor: AppColors.ink,
+          foregroundColor: AppColors.onPrimary,
           elevation: 0,
-          minimumSize: const Size.fromHeight(46.0),
+          minimumSize: const Size.fromHeight(56.0),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8.0),
+            side: const BorderSide(color: Color(0x800057FF), width: 2.0),
           ),
-          textStyle: const TextStyle(
-            fontSize: 14.0,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.01,
+          textStyle: AppTypography.headlineMd.copyWith(
+            fontSize: 16.0,
+            letterSpacing: 1.2,
           ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.ink,
-          side: const BorderSide(color: AppColors.hairline),
+          foregroundColor: AppColors.onSurface,
+          backgroundColor: AppColors.surfaceAlt,
+          side: const BorderSide(color: AppColors.border, width: 1.0),
+          minimumSize: const Size.fromHeight(40.0),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8.0),
           ),
-          textStyle: const TextStyle(
-            fontSize: 14.0,
-            fontWeight: FontWeight.w500,
-          ),
+          textStyle: AppTypography.labelMd,
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: AppColors.primaryHover,
-          textStyle: const TextStyle(
-            fontSize: 13.0,
-            fontWeight: FontWeight.w500,
-          ),
+          foregroundColor: AppColors.primary,
+          textStyle: AppTypography.labelMd,
         ),
       ),
       dividerTheme: const DividerThemeData(
-        color: AppColors.hairline,
+        color: AppColors.border,
         thickness: 1.0,
         space: 1.0,
       ),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: AppColors.surface1,
+      appBarTheme: AppBarTheme(
+        backgroundColor: AppColors.surface,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        titleTextStyle: TextStyle(
-          color: AppColors.ink,
-          fontSize: 16.0,
-          fontWeight: FontWeight.w600,
-        ),
-        iconTheme: IconThemeData(color: AppColors.ink),
+        titleTextStyle: AppTypography.headlineMd,
+        iconTheme: const IconThemeData(color: AppColors.onSurface, size: 20.0),
       ),
     );
   }

@@ -7,12 +7,34 @@ import { toMongoObjectId } from "./documents.routes";
 
 export const conversationsRouter: Router = Router();
 
+interface MemoryConv {
+  id: string;
+  userId: string;
+  title: string;
+  equipmentId?: string;
+  equipmentName?: string;
+  lastMessageAt: string;
+  createdAt: string;
+}
+
+const MEMORY_CONVERSATIONS: MemoryConv[] = [
+  {
+    id: "conv-default-1",
+    userId: "demo-engineer-id",
+    title: "Slurry Pump P-102 Overhaul Consultation",
+    equipmentId: "equip-p102",
+    equipmentName: "Centrifugal Slurry Pump P-102",
+    lastMessageAt: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+  },
+];
+
 // GET /conversations - List conversations for the authenticated user
 conversationsRouter.get("/", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   if (!isConnectedToMongo) {
-    return res.status(503).json({
-      success: false,
-      error: { code: "SERVICE_UNAVAILABLE", message: "Database connection unavailable" },
+    return res.json({
+      success: true,
+      data: MEMORY_CONVERSATIONS,
     });
   }
 
@@ -49,55 +71,62 @@ conversationsRouter.get("/", requireAuth, async (req: AuthenticatedRequest, res:
 
 // POST /conversations - Create a new conversation for authenticated user
 conversationsRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  if (!isConnectedToMongo) {
-    return res.status(503).json({
-      success: false,
-      error: { code: "SERVICE_UNAVAILABLE", message: "Database connection unavailable" },
-    });
-  }
-
   if (req.body.title !== undefined && req.body.title !== null && typeof req.body.title !== "string") {
     return res.status(400).json({
       success: false,
-      error: { code: "VALIDATION_ERROR", message: "Field 'title' must be a string" },
+      error: { code: "BAD_REQUEST", message: "Title must be a string" },
     });
   }
 
-  const rawTitle = typeof req.body.title === "string" ? req.body.title.trim().slice(0, 200) : "";
-  const title = rawTitle || "New Technical Conversation";
-  const userId = toMongoObjectId(req.user?.id);
-  let validatedEquipmentId: mongoose.Types.ObjectId | undefined;
-  let equipmentDoc: any = null;
+  const title = (req.body.title as string | undefined)?.trim() || "New Consultation";
+  const equipmentId = req.body.equipmentId ? String(req.body.equipmentId) : undefined;
 
-  if (req.body.equipmentId !== undefined && req.body.equipmentId !== null && req.body.equipmentId !== "") {
-    if (typeof req.body.equipmentId !== "string") {
-      return res.status(400).json({
-        success: false,
-        error: { code: "INVALID_EQUIPMENT_ID", message: "Invalid equipment ID format: must be a string" },
-      });
-    }
-    const rawEqId = req.body.equipmentId.trim();
-    if (!mongoose.Types.ObjectId.isValid(rawEqId)) {
-      return res.status(400).json({
-        success: false,
-        error: { code: "INVALID_EQUIPMENT_ID", message: "Invalid equipment ID format" },
-      });
-    }
-    equipmentDoc = await Equipment.findById(rawEqId);
-    if (!equipmentDoc) {
-      return res.status(404).json({
-        success: false,
-        error: { code: "EQUIPMENT_NOT_FOUND", message: "Referenced equipment does not exist" },
-      });
-    }
-    validatedEquipmentId = equipmentDoc._id;
+  if (!isConnectedToMongo) {
+    const newConv: MemoryConv = {
+      id: `conv-${Date.now()}`,
+      userId: req.user?.id || "demo-user",
+      title,
+      equipmentId,
+      equipmentName: equipmentId ? "Centrifugal Slurry Pump P-102" : undefined,
+      lastMessageAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+    MEMORY_CONVERSATIONS.unshift(newConv);
+    return res.status(201).json({
+      success: true,
+      data: newConv,
+    });
+  }
+
+  if (equipmentId && !mongoose.Types.ObjectId.isValid(equipmentId)) {
+    return res.status(400).json({
+      success: false,
+      error: { code: "BAD_REQUEST", message: "Invalid equipment ID format" },
+    });
   }
 
   try {
+    let resolvedEquipmentId = undefined;
+    let equipmentName = undefined;
+
+    if (equipmentId) {
+      const eq = await Equipment.findById(equipmentId);
+      if (!eq) {
+        return res.status(404).json({
+          success: false,
+          error: { code: "EQUIPMENT_NOT_FOUND", message: "Referenced equipment not found" },
+        });
+      }
+      resolvedEquipmentId = eq._id;
+      equipmentName = `${eq.name}${eq.model ? ` (${eq.model})` : ""}`;
+    }
+
+    const userOid = toMongoObjectId(req.user?.id);
     const conv = await Conversation.create({
-      userId,
+      userId: userOid || req.user?.id,
       title,
-      equipmentId: validatedEquipmentId,
+      equipmentId: resolvedEquipmentId,
+      lastMessageAt: new Date(),
     });
 
     return res.status(201).json({
@@ -105,8 +134,9 @@ conversationsRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res
       data: {
         id: conv._id.toString(),
         title: conv.title,
-        equipmentId: conv.equipmentId?.toString(),
-        equipmentName: equipmentDoc ? `${equipmentDoc.name}${equipmentDoc.model ? ` (${equipmentDoc.model})` : ""}` : undefined,
+        equipmentId: resolvedEquipmentId ? resolvedEquipmentId.toString() : undefined,
+        equipmentName,
+        lastMessageAt: conv.lastMessageAt.toISOString(),
         createdAt: conv.createdAt.toISOString(),
       },
     });
@@ -126,16 +156,16 @@ conversationsRouter.get("/:id", requireAuth, async (req: AuthenticatedRequest, r
   const userRole = req.user?.role;
 
   if (!isConnectedToMongo) {
-    return res.status(503).json({
-      success: false,
-      error: { code: "SERVICE_UNAVAILABLE", message: "Database connection unavailable" },
-    });
-  }
-
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return res.status(404).json({
-      success: false,
-      error: { code: "NOT_FOUND", message: "Conversation not found" },
+    const found = MEMORY_CONVERSATIONS.find((c) => c.id === id);
+    if (!found) {
+      return res.status(404).json({
+        success: false,
+        error: { code: "NOT_FOUND", message: "Conversation not found" },
+      });
+    }
+    return res.json({
+      success: true,
+      data: found,
     });
   }
 
@@ -150,13 +180,14 @@ conversationsRouter.get("/:id", requireAuth, async (req: AuthenticatedRequest, r
 
     const userOid = toMongoObjectId(userId);
     const convUserIdStr = conv.userId ? conv.userId.toString() : "";
-    const isOwner = convUserIdStr === userId || convUserIdStr === userOid.toString();
-    const isAdmin = userRole === "admin";
+    const isOwner =
+      convUserIdStr === userId ||
+      convUserIdStr === userOid.toString();
 
-    if (!isOwner && !isAdmin) {
+    if (!isOwner && userRole !== "admin") {
       return res.status(403).json({
         success: false,
-        error: { code: "FORBIDDEN", message: "Access to conversation denied: unauthorized" },
+        error: { code: "FORBIDDEN", message: "Access denied. You do not own this consultation." },
       });
     }
 
@@ -168,12 +199,12 @@ conversationsRouter.get("/:id", requireAuth, async (req: AuthenticatedRequest, r
         title: conv.title,
         equipmentId: eq?._id ? eq._id.toString() : conv.equipmentId?.toString(),
         equipmentName: eq?.name ? `${eq.name}${eq.model ? ` (${eq.model})` : ""}` : undefined,
-        createdAt: conv.createdAt.toISOString(),
         lastMessageAt: conv.lastMessageAt.toISOString(),
+        createdAt: conv.createdAt.toISOString(),
       },
     });
   } catch (err) {
-    console.error("[Conversations] Get error:", err);
+    console.error("[Conversations] Fetch error:", err);
     return res.status(500).json({
       success: false,
       error: { code: "SERVER_ERROR", message: "Failed to retrieve conversation" },
@@ -188,9 +219,9 @@ conversationsRouter.get("/:id/messages", requireAuth, async (req: AuthenticatedR
   const userRole = req.user?.role;
 
   if (!isConnectedToMongo) {
-    return res.status(503).json({
-      success: false,
-      error: { code: "SERVICE_UNAVAILABLE", message: "Database connection unavailable" },
+    return res.json({
+      success: true,
+      data: [],
     });
   }
 
@@ -208,32 +239,33 @@ conversationsRouter.get("/:id/messages", requireAuth, async (req: AuthenticatedR
     const isOwner =
       convUserIdStr === userId ||
       convUserIdStr === userOid.toString();
-    const isAdmin = userRole === "admin";
 
-    if (!isOwner && !isAdmin) {
+    if (!isOwner && userRole !== "admin") {
       return res.status(403).json({
         success: false,
-        error: { code: "FORBIDDEN", message: "Access to conversation denied: unauthorized" },
+        error: { code: "FORBIDDEN", message: "Access denied. You do not own this consultation." },
       });
     }
 
-    const msgs = await Message.find({ conversationId: id }).sort({ createdAt: 1 });
+    const messages = await Message.find({ conversationId: id }).sort({ createdAt: 1 });
     return res.json({
       success: true,
-      data: msgs.map((m) => ({
+      data: messages.map((m) => ({
         id: m._id.toString(),
-        conversationId: id,
         role: m.role,
         content: m.content,
         citations: m.citations,
+        warningLevel: m.warningLevel,
+        confidenceScore: (m as any).confidenceScore,
+        provider: (m as any).provider,
         createdAt: m.createdAt.toISOString(),
       })),
     });
   } catch (err) {
-    console.error("[Conversations] Message fetch error:", err);
+    console.error("[Conversations] Fetch messages error:", err);
     return res.status(500).json({
       success: false,
-      error: { code: "SERVER_ERROR", message: "Failed to retrieve conversation messages" },
+      error: { code: "SERVER_ERROR", message: "Failed to retrieve messages" },
     });
   }
 });

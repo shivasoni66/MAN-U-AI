@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../equipment/controllers/equipment_controller.dart';
 import '../../equipment/models/equipment_model.dart';
+import '../../offline/services/offline_area_storage.service.dart';
 import '../models/chat_message_model.dart';
 import '../models/conversation_model.dart';
 import '../repositories/chat_repository.dart';
@@ -14,6 +16,7 @@ class ChatState {
   final bool isSending;
   final String? historyError;
   final String? sendingError;
+  final bool isOfflineMode;
 
   const ChatState({
     this.activeConversation,
@@ -23,6 +26,7 @@ class ChatState {
     this.isSending = false,
     this.historyError,
     this.sendingError,
+    this.isOfflineMode = false,
   });
 
   ChatState copyWith({
@@ -33,6 +37,7 @@ class ChatState {
     bool? isSending,
     String? Function()? historyError,
     String? Function()? sendingError,
+    bool? isOfflineMode,
   }) {
     return ChatState(
       activeConversation: activeConversation != null
@@ -46,6 +51,7 @@ class ChatState {
       isSending: isSending ?? this.isSending,
       historyError: historyError != null ? historyError() : this.historyError,
       sendingError: sendingError != null ? sendingError() : this.sendingError,
+      isOfflineMode: isOfflineMode ?? this.isOfflineMode,
     );
   }
 }
@@ -60,6 +66,23 @@ class ChatController extends Notifier<ChatState> {
   ChatState build() {
     _chatRepository = ref.watch(chatRepositoryProvider);
     return const ChatState();
+  }
+
+  /// Toggles Dead-Zone Offline Mode explicitly
+  void toggleOfflineMode() {
+    state = state.copyWith(isOfflineMode: !state.isOfflineMode);
+  }
+
+  /// Downloads and caches the Area Pack for the target equipment for offline dead zone use.
+  Future<bool> downloadAreaPack(String equipmentId) async {
+    try {
+      final equipmentRepo = ref.read(equipmentRepositoryProvider);
+      final pack = await equipmentRepo.getOfflinePack(equipmentId);
+      await ref.read(offlineAreaStorageServiceProvider).saveAreaPack(pack);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Sets up an empty consultation, optionally bound to a piece of plant equipment.
@@ -103,20 +126,59 @@ class ChatController extends Notifier<ChatState> {
     state = state.copyWith(sendingError: () => null);
   }
 
-  /// Sends a question to the industrial RAG pipeline.
-  /// Enforces duplicate-submit prevention and creates conversation if needed.
+  /// Sends a question to the industrial RAG pipeline, falling back to local Dead-Zone retrieval on network loss.
   Future<void> sendMessage(String text) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty || state.isSending) {
       return;
     }
 
-    // Clear previous error
     state = state.copyWith(sendingError: () => null);
 
     ConversationModel? currentConv = state.activeConversation;
+    final targetEquipmentId = currentConv?.equipmentId ?? state.selectedEquipment?.id;
 
-    // 1. Ensure conversation exists before sending message
+    // 1. If Dead-Zone offline mode is forced, run local retrieval immediately
+    if (state.isOfflineMode && targetEquipmentId != null) {
+      final userMsg = ChatMessageModel(
+        role: 'user',
+        content: trimmed,
+        createdAt: DateTime.now(),
+        conversationId: currentConv?.id,
+      );
+      state = state.copyWith(
+        messages: List<ChatMessageModel>.from(state.messages)..add(userMsg),
+        isSending: true,
+      );
+
+      final offlineResp = await ref.read(offlineAreaStorageServiceProvider).searchOfflinePassages(
+            targetEquipmentId,
+            trimmed,
+            equipmentName: state.selectedEquipment?.name,
+          );
+
+      final assistantMsg = ChatMessageModel(
+        role: 'assistant',
+        content: offlineResp.answer,
+        citations: offlineResp.citations,
+        warningLevel: offlineResp.warningLevel,
+        confidenceScore: offlineResp.confidenceScore,
+        provider: offlineResp.provider,
+        safetyPreconditions: offlineResp.safetyPreconditions,
+        suggestedTicket: offlineResp.suggestedTicket,
+        createdAt: DateTime.now(),
+        conversationId: currentConv?.id,
+        isOfflineFallback: true,
+      );
+
+      state = state.copyWith(
+        messages: List<ChatMessageModel>.from(state.messages)..add(assistantMsg),
+        isSending: false,
+      );
+      return;
+    }
+
+    // 2. Ensure conversation exists before sending message
     if (currentConv == null) {
       try {
         final title = trimmed.length > 45 ? '${trimmed.substring(0, 42)}...' : trimmed;
@@ -132,7 +194,7 @@ class ChatController extends Notifier<ChatState> {
       }
     }
 
-    // 2. Append user message optimistically
+    // 3. Append user message optimistically
     final userMsg = ChatMessageModel(
       role: 'user',
       content: trimmed,
@@ -147,7 +209,7 @@ class ChatController extends Notifier<ChatState> {
       sendingError: () => null,
     );
 
-    // 3. Dispatch to backend
+    // 4. Dispatch to backend with automatic Dead-Zone fallback
     try {
       final response = await _chatRepository.sendMessage(
         message: trimmed,
@@ -162,6 +224,9 @@ class ChatController extends Notifier<ChatState> {
         warningLevel: response.warningLevel,
         confidenceScore: response.confidenceScore,
         provider: response.provider,
+        safetyPreconditions: response.safetyPreconditions,
+        suggestedTicket: response.suggestedTicket,
+        expandedTerms: response.expandedTerms,
         createdAt: DateTime.now(),
         conversationId: currentConv.id,
       );
@@ -171,9 +236,45 @@ class ChatController extends Notifier<ChatState> {
         isSending: false,
       );
 
-      // Refresh list in background to update lastMessageAt
       ref.read(conversationListProvider.notifier).refresh();
     } catch (err) {
+      final isConnectionIssue = err is DioException &&
+          (err.type == DioExceptionType.connectionTimeout ||
+              err.type == DioExceptionType.sendTimeout ||
+              err.type == DioExceptionType.connectionError ||
+              err.response == null);
+
+      if (isConnectionIssue && targetEquipmentId != null) {
+        try {
+          final offlineResp = await ref.read(offlineAreaStorageServiceProvider).searchOfflinePassages(
+                targetEquipmentId,
+                trimmed,
+                equipmentName: state.selectedEquipment?.name,
+              );
+
+          final offlineMsg = ChatMessageModel(
+            role: 'assistant',
+            content: offlineResp.answer,
+            citations: offlineResp.citations,
+            warningLevel: offlineResp.warningLevel,
+            confidenceScore: offlineResp.confidenceScore,
+            provider: offlineResp.provider,
+            safetyPreconditions: offlineResp.safetyPreconditions,
+            suggestedTicket: offlineResp.suggestedTicket,
+            createdAt: DateTime.now(),
+            conversationId: currentConv.id,
+            isOfflineFallback: true,
+          );
+
+          state = state.copyWith(
+            messages: List<ChatMessageModel>.from(state.messages)..add(offlineMsg),
+            isSending: false,
+            sendingError: () => null,
+          );
+          return;
+        } catch (_) {}
+      }
+
       final errText = _parseError(err, 'Unable to get response from industrial assistant');
       state = state.copyWith(
         isSending: false,
@@ -210,7 +311,7 @@ class ChatController extends Notifier<ChatState> {
       if (err.type == DioExceptionType.connectionTimeout ||
           err.type == DioExceptionType.sendTimeout ||
           err.type == DioExceptionType.connectionError) {
-        return 'Network connection to plant copilot failed or timed out. Please check your connectivity or server address.';
+        return 'Network connection to plant copilot failed or timed out. Switched to offline dead-zone cache if available.';
       }
     }
     return fallback;

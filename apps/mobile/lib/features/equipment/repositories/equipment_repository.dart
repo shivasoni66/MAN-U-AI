@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import '../models/equipment_model.dart';
+import '../../offline/models/area_pack_model.dart';
 
 class EquipmentRepository {
   final Dio dio;
@@ -17,5 +18,15 @@ class EquipmentRepository {
           .toList();
     }
     return [];
+  }
+
+  /// Fetches offline documentation area pack for dead-zone plant operation.
+  Future<AreaPackModel> getOfflinePack(String equipmentId) async {
+    final response = await dio.get('/equipment/$equipmentId/offline-pack');
+    final data = response.data;
+    if (data is Map<String, dynamic> && data['data'] is Map<String, dynamic>) {
+      return AreaPackModel.fromJson(data['data'] as Map<String, dynamic>);
+    }
+    throw Exception('Failed to load offline area pack');
   }
 }

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_typography.dart';
+import '../../../core/theme/widgets/terminal_components.dart';
+import '../../../core/theme/widgets/terminal_bottom_nav_bar.dart';
 import '../../auth/controllers/auth_controller.dart';
 import '../../auth/models/auth_state.dart';
 import '../controllers/chat_controller.dart';
@@ -8,8 +11,12 @@ import 'widgets/chat_bubble.dart';
 import 'widgets/chat_composer.dart';
 import 'widgets/conversation_drawer.dart';
 import 'widgets/equipment_picker_modal.dart';
+import 'widgets/plant_glossary_modal.dart';
+import '../../diagram/views/interactive_diagram_viewer_screen.dart';
 import '../../documents/views/widgets/document_upload_modal.dart';
 
+/// Terminal Cobalt Mobile Chat Screen
+/// Industrial. Instrumented. Operational.
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
 
@@ -19,6 +26,7 @@ class ChatScreen extends ConsumerStatefulWidget {
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _scrollController = ScrollController();
+  TerminalTab _activeTab = TerminalTab.chat;
 
   @override
   void dispose() {
@@ -65,92 +73,197 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
+  void _showGlossaryModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => PlantGlossaryModal(
+        onSelectTerm: (term) {
+          ref.read(chatControllerProvider.notifier).sendMessage('Explain SOP for $term');
+        },
+      ),
+    );
+  }
+
+  void _showExplodedDiagram(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => InteractiveDiagramViewerScreen(
+          figureId: 'FIG-P102-EXPLODED',
+          title: 'P-102 Slurry Pump Exploded Assembly',
+          onAskAboutPart: (prompt) {
+            ref.read(chatControllerProvider.notifier).sendMessage(prompt);
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _downloadOfflineAreaPack(String equipmentId, String equipmentName) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('DOWNLOADING AREA PACK FOR $equipmentName...'),
+        duration: const Duration(seconds: 2),
+        backgroundColor: AppColors.surfaceAlt,
+      ),
+    );
+
+    final success = await ref
+        .read(chatControllerProvider.notifier)
+        .downloadAreaPack(equipmentId);
+
+    if (mounted) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? 'OFFLINE AREA PACK CACHED // DEAD-ZONE VERIFICATION READY'
+                : 'COULD NOT DOWNLOAD AREA PACK',
+          ),
+          backgroundColor: success ? AppColors.surfaceAlt : AppColors.error,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  void _handleTabSelect(TerminalTab tab) {
+    setState(() {
+      _activeTab = tab;
+    });
+
+    switch (tab) {
+      case TerminalTab.chat:
+        break;
+      case TerminalTab.equipment:
+        _showEquipmentPicker(context);
+        break;
+      case TerminalTab.diagram:
+        _showExplodedDiagram(context);
+        break;
+      case TerminalTab.glossary:
+        _showGlossaryModal(context);
+        break;
+      case TerminalTab.fabAction:
+        _handleFabAction();
+        break;
+    }
+  }
+
+  void _handleFabAction() {
+    // Quick Copilot Action FAB: Prompts the primary quick diagnostic
+    ref.read(chatControllerProvider.notifier).sendMessage('Provide safety isolation steps and LOTO checklist for current equipment');
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.listen<ChatState>(chatControllerProvider, (prev, next) {
+      if (prev?.messages.length != next.messages.length) {
+        _scrollToBottom();
+      }
+    });
+
     final chatState = ref.watch(chatControllerProvider);
     final activeConv = chatState.activeConversation;
     final selectedEq = chatState.selectedEquipment;
+    final currentEquipmentId = activeConv?.equipmentId ?? selectedEq?.id;
+    final currentEquipmentName = activeConv?.equipmentName ?? selectedEq?.displayName;
+
     final authState = ref.watch(authControllerProvider);
     final user = authState is Authenticated ? authState.user : null;
 
-    // Trigger scroll to bottom whenever messages count changes
-    ref.listen(
-      chatControllerProvider.select((s) => s.messages.length),
-      (previous, next) {
-        if (next > (previous ?? 0)) {
-          _scrollToBottom();
-        }
-      },
-    );
+    final titleText = activeConv?.title.isNotEmpty == true
+        ? activeConv!.title.toUpperCase()
+        : currentEquipmentName != null
+            ? '$currentEquipmentName // ACTIVE'
+            : 'NEW CONSULTATION';
 
     return Scaffold(
-      backgroundColor: AppColors.canvas,
+      backgroundColor: AppColors.surface,
       drawer: const ConversationDrawer(),
       appBar: AppBar(
-        backgroundColor: AppColors.canvas,
+        backgroundColor: AppColors.surface,
         elevation: 0,
-        titleSpacing: 0,
+        scrolledUnderElevation: 0,
         leading: Builder(
-          builder: (context) => IconButton(
+          builder: (drawerCtx) => IconButton(
             key: const Key('open_drawer_button'),
-            icon: const Icon(Icons.menu_rounded, color: AppColors.ink),
-            onPressed: () => Scaffold.of(context).openDrawer(),
-            tooltip: 'Consultation history',
+            icon: const Icon(Icons.menu_rounded, size: 20.0, color: AppColors.onSurface),
+            tooltip: 'Consultation History',
+            onPressed: () => Scaffold.of(drawerCtx).openDrawer(),
           ),
         ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        title: Row(
           children: [
-            Text(
-              activeConv != null ? activeConv.title : 'New Consultation',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 14.5,
-                fontWeight: FontWeight.w700,
-                color: AppColors.ink,
-              ),
+            StatusDot(
+              color: chatState.isOfflineMode ? AppColors.warning : AppColors.success,
+              size: 10.0,
             ),
-            const SizedBox(height: 1.0),
-            Text(
-              activeConv?.equipmentName ??
-                  selectedEq?.displayName ??
-                  'General Facility Knowledge',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 11.0,
-                color: AppColors.primaryHover,
-                fontWeight: FontWeight.w500,
+            const SizedBox(width: 8.0),
+            Expanded(
+              child: Text(
+                titleText,
+                style: AppTypography.headlineMd.copyWith(fontSize: 14.0),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
         ),
         actions: [
+          // Dead Zone Switcher
+          IconButton(
+            key: const Key('toggle_offline_mode_button'),
+            icon: Icon(
+              chatState.isOfflineMode
+                  ? Icons.signal_wifi_off_rounded
+                  : Icons.wifi_rounded,
+              color: chatState.isOfflineMode ? AppColors.warning : AppColors.onSurfaceVariant,
+              size: 20.0,
+            ),
+            tooltip: chatState.isOfflineMode
+                ? 'Dead-Zone Mode Active'
+                : 'Switch to Offline Mode',
+            onPressed: () {
+              ref.read(chatControllerProvider.notifier).toggleOfflineMode();
+            },
+          ),
+          // Plant Glossary
+          IconButton(
+            key: const Key('open_glossary_button'),
+            icon: const Icon(Icons.menu_book_rounded, size: 20.0, color: AppColors.onSurfaceVariant),
+            tooltip: 'Plant Glossary & Slang',
+            onPressed: () => _showGlossaryModal(context),
+          ),
+          // Exploded Diagram
+          IconButton(
+            key: const Key('open_diagram_button'),
+            icon: const Icon(Icons.schema_rounded, size: 20.0, color: AppColors.onSurfaceVariant),
+            tooltip: 'Interactive Exploded Diagram',
+            onPressed: () => _showExplodedDiagram(context),
+          ),
+          // Equipment picker (when no active conversation lock)
           if (activeConv == null) ...[
             IconButton(
               key: const Key('appbar_pick_equipment_button'),
               icon: Icon(
-                selectedEq != null ? Icons.tune_rounded : Icons.tune_outlined,
-                color: selectedEq != null ? AppColors.primary : AppColors.inkSubtle,
+                selectedEq != null
+                    ? Icons.precision_manufacturing_rounded
+                    : Icons.precision_manufacturing_outlined,
+                color: selectedEq != null ? AppColors.primary : AppColors.onSurfaceVariant,
                 size: 20.0,
               ),
               tooltip: 'Choose plant equipment',
               onPressed: () => _showEquipmentPicker(context),
             ),
           ],
-          if (user?.role == 'engineer') ...[
-            IconButton(
-              key: const Key('appbar_upload_document_button'),
-              icon: const Icon(Icons.upload_file_rounded, color: AppColors.inkSubtle, size: 20.0),
-              tooltip: 'Ingest technical manual (PDF)',
-              onPressed: () => _showUploadModal(context),
-            ),
-          ],
+          // Start New Consultation
           IconButton(
             key: const Key('appbar_new_consultation_button'),
-            icon: const Icon(Icons.add_comment_outlined, color: AppColors.inkSubtle, size: 20.0),
-            tooltip: 'Start new consultation',
+            icon: const Icon(Icons.add_comment_outlined, size: 20.0, color: AppColors.onSurfaceVariant),
+            tooltip: 'New consultation',
             onPressed: () {
               ref.read(chatControllerProvider.notifier).startNewConsultation();
             },
@@ -160,22 +273,83 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       body: Column(
         children: [
-          const Divider(color: AppColors.hairline, height: 1.0),
+          const Divider(color: AppColors.border, height: 1.0),
 
-          // Main Chat Area
+          // Offline Dead-Zone Active Telemetry Banner
+          if (chatState.isOfflineMode) ...[
+            Container(
+              key: const Key('offline_mode_banner'),
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              color: AppColors.warning.withValues(alpha: 0.12),
+              child: Row(
+                children: [
+                  const StatusDot(color: AppColors.warning, size: 8.0),
+                  const SizedBox(width: 8.0),
+                  Expanded(
+                    child: Text(
+                      'DEAD-ZONE MODE ACTIVE // LOCAL PROCEDURES ONLY',
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.warning,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () {
+                      ref.read(chatControllerProvider.notifier).toggleOfflineMode();
+                    },
+                    child: Text(
+                      'GO ONLINE',
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else if (currentEquipmentId != null) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
+              color: AppColors.surfaceAlt,
+              child: Row(
+                children: [
+                  const Icon(Icons.downloading_rounded, size: 14.0, color: AppColors.primary),
+                  const SizedBox(width: 8.0),
+                  Expanded(
+                    child: Text(
+                      'CACHE $currentEquipmentName FOR DEAD-ZONES'.toUpperCase(),
+                      style: AppTypography.caption,
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () => _downloadOfflineAreaPack(
+                      currentEquipmentId,
+                      currentEquipmentName ?? 'MACHINE',
+                    ),
+                    child: Text(
+                      'DOWNLOAD',
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // Main Chat Message Area
           Expanded(
             child: chatState.isLoadingHistory
                 ? const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(strokeWidth: 2.2),
-                        SizedBox(height: 12.0),
-                        Text(
-                          'Loading consultation history...',
-                          style: TextStyle(color: AppColors.inkSubtle, fontSize: 12.0),
-                        ),
-                      ],
+                    child: SizedBox(
+                      width: 24.0,
+                      height: 24.0,
+                      child: CircularProgressIndicator(strokeWidth: 2.0),
                     ),
                   )
                 : chatState.historyError != null
@@ -186,15 +360,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               const Icon(Icons.error_outline_rounded,
-                                  color: AppColors.danger, size: 36.0),
+                                  color: AppColors.error, size: 36.0),
                               const SizedBox(height: 12.0),
                               Text(
-                                chatState.historyError!,
+                                chatState.historyError!.toUpperCase(),
                                 textAlign: TextAlign.center,
-                                style: const TextStyle(color: AppColors.ink, fontSize: 13.0),
+                                style: AppTypography.caption.copyWith(color: AppColors.error),
                               ),
                               const SizedBox(height: 16.0),
-                              ElevatedButton(
+                              SecondaryButton(
+                                label: 'RETRY LOADING',
                                 onPressed: () {
                                   if (activeConv != null) {
                                     ref
@@ -202,7 +377,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                         .selectConversation(activeConv);
                                   }
                                 },
-                                child: const Text('Retry Loading History'),
                               ),
                             ],
                           ),
@@ -222,18 +396,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               return ChatBubble(
                                 key: Key('chat_bubble_$index'),
                                 message: msg,
+                                onSendMessage: (prompt) {
+                                  ref.read(chatControllerProvider.notifier).sendMessage(prompt);
+                                },
                               );
                             },
                           ),
           ),
 
-          // Loading / Generating Indicator Banner
+          // Generating / Loading Indicator Banner
           if (chatState.isSending) ...[
             Container(
               key: const Key('chat_sending_indicator'),
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              color: AppColors.surface1,
+              color: AppColors.surfaceAlt,
               child: Row(
                 children: [
                   const SizedBox(
@@ -246,12 +423,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ),
                   const SizedBox(width: 10.0),
                   Text(
-                    'Evaluating technical documents & drafting grounded answer...',
-                    style: TextStyle(
-                      color: AppColors.inkMuted,
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w500,
-                    ),
+                    chatState.isOfflineMode
+                        ? 'Searching local cache & ranking passages...'
+                        : 'Evaluating technical documents & drafting grounded answer...',
+                    style: AppTypography.caption,
                   ),
                 ],
               ),
@@ -264,23 +439,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               key: const Key('chat_error_banner'),
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
-              color: AppColors.danger.withValues(alpha: 0.12),
+              color: AppColors.error.withValues(alpha: 0.12),
               child: Row(
                 children: [
-                  const Icon(Icons.error_outline_rounded, color: AppColors.danger, size: 16.0),
+                  const Icon(Icons.error_outline_rounded, color: AppColors.error, size: 16.0),
                   const SizedBox(width: 8.0),
                   Expanded(
                     child: Text(
                       chatState.sendingError!,
-                      style: const TextStyle(
-                        color: AppColors.ink,
-                        fontSize: 12.0,
-                        fontWeight: FontWeight.w500,
-                      ),
+                      style: AppTypography.caption.copyWith(color: AppColors.error),
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close_rounded, size: 16.0, color: AppColors.inkSubtle),
+                    icon: const Icon(Icons.close_rounded, size: 16.0, color: AppColors.onSurfaceVariant),
                     onPressed: () {
                       ref.read(chatControllerProvider.notifier).clearSendingError();
                     },
@@ -307,101 +478,85 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         ],
       ),
+      bottomNavigationBar: TerminalBottomNavBar(
+        activeTab: _activeTab,
+        onTabSelected: _handleTabSelect,
+        onFabPressed: _handleFabAction,
+      ),
     );
   }
 
   Widget _buildEmptyState(BuildContext context, String? userName) {
-    const suggestions = [
-      'Model SP-400X Slurry Pump mechanical seal torque spec',
-      'Hydraulic oil operating pressure troubleshooting SOP',
-      'Bearing vibration analysis protocol and limits',
-    ];
-
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
       child: Column(
         children: [
-          const SizedBox(height: 20.0),
-          Container(
-            width: 48.0,
-            height: 48.0,
-            decoration: BoxDecoration(
-              color: AppColors.surface2,
-              borderRadius: BorderRadius.circular(12.0),
-              border: Border.all(color: AppColors.hairlineStrong),
-            ),
-            child: const Icon(
-              Icons.precision_manufacturing_rounded,
-              color: AppColors.primary,
-              size: 26.0,
-            ),
+          const SizedBox(height: 16.0),
+
+          // Square Avatar Tile (Signature 64px, 2px Primary Border)
+          const SquareAvatar(
+            size: 56.0,
+            icon: Icons.bolt_rounded,
           ),
           const SizedBox(height: 14.0),
+
+          Text(
+            'New Consultation',
+            style: AppTypography.headlineLg.copyWith(fontSize: 22.0),
+          ),
+          const SizedBox(height: 4.0),
           Text(
             'Industrial Reliability Copilot',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.ink,
-                ),
+            style: AppTypography.labelUppercase.copyWith(
+              color: AppColors.primary,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-          const SizedBox(height: 6.0),
+          const SizedBox(height: 8.0),
           Text(
-            'Ask technical questions grounded in OEM manuals, equipment blueprints, and engineering standards.',
+            'Ask technical questions grounded in OEM manuals, equipment blueprints, and engineering standards.'
+                .toUpperCase(),
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppColors.inkSubtle,
-                  height: 1.45,
-                ),
+            style: AppTypography.caption,
           ),
           const SizedBox(height: 28.0),
 
-          // Suggested Queries
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'SUGGESTED TECHNICAL INQUIRIES',
-              style: TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w700,
-                color: AppColors.inkSubtle,
-                letterSpacing: 0.5,
-              ),
-            ),
+          // Section Header with the 4px Primary Bar
+          const SectionHeader(
+            title: 'SUGGESTED TECHNICAL INQUIRIES',
+            padding: EdgeInsets.only(bottom: 12.0),
           ),
-          const SizedBox(height: 10.0),
-          ...suggestions.map(
-            (suggestion) => Container(
-              margin: const EdgeInsets.only(bottom: 8.0),
-              width: double.infinity,
-              child: OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  alignment: Alignment.centerLeft,
-                  padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
-                  backgroundColor: AppColors.surface1,
-                  side: const BorderSide(color: AppColors.hairline),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
-                ),
-                onPressed: () {
-                  ref.read(chatControllerProvider.notifier).sendMessage(suggestion);
-                },
-                child: Row(
-                  children: [
-                    const Icon(Icons.arrow_forward_rounded, size: 14.0, color: AppColors.primaryHover),
-                    const SizedBox(width: 8.0),
-                    Expanded(
-                      child: Text(
-                        suggestion,
-                        style: const TextStyle(
-                          color: AppColors.inkMuted,
-                          fontSize: 12.0,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+
+          // Suggested Queries as Instrumented Rows with Categorical Identity Dots
+          InstrumentListRow(
+            title: 'Model SP-400X Slurry Pump mechanical seal torque spec',
+            subtitle: 'CENTRIFUGAL SLURRY PUMP // SEC 4.2',
+            categoricalColor: AppColors.accentCategorical1,
+            onTap: () {
+              ref
+                  .read(chatControllerProvider.notifier)
+                  .sendMessage('Model SP-400X Slurry Pump mechanical seal torque spec');
+            },
+          ),
+          InstrumentListRow(
+            title: 'Hydraulic press HP-400 lockout tagout procedure',
+            subtitle: 'STANDARD OPERATING PROCEDURE // LOTO SEC 3.1',
+            categoricalColor: AppColors.accentCategorical2,
+            onTap: () {
+              ref
+                  .read(chatControllerProvider.notifier)
+                  .sendMessage('Hydraulic press HP-400 lockout tagout procedure');
+            },
+          ),
+          InstrumentListRow(
+            title: 'Rotary screw compressor fault E-0247 diagnostic',
+            subtitle: 'AIR COMPRESSOR GUIDE // FAULT E-0247',
+            categoricalColor: AppColors.accentCategorical3,
+            onTap: () {
+              ref
+                  .read(chatControllerProvider.notifier)
+                  .sendMessage('Rotary screw compressor fault E-0247 diagnostic');
+            },
           ),
         ],
       ),

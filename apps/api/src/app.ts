@@ -15,6 +15,9 @@ import { feedbackRouter } from "./routes/feedback.routes";
 import { healthRouter } from "./routes/health.routes";
 import { settingsRouter } from "./routes/settings.routes";
 import { integrationsRouter } from "./routes/integrations.routes";
+import { glossaryRouter } from "./routes/glossary.routes";
+import { ticketRouter } from "./routes/tickets.routes";
+import { diagramRouter } from "./routes/diagrams.routes";
 
 export const app = express();
 
@@ -44,7 +47,6 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // Server-side request timeout guard (25 seconds)
 app.use((req: Request, res: Response, next: NextFunction) => {
-  // Allow test overrides if specified
   const timeoutMs = Number(process.env.TEST_REQUEST_TIMEOUT_MS) || 25_000;
   const timer = setTimeout(() => {
     if (!res.headersSent) {
@@ -66,9 +68,10 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // Security and compression middleware
 app.use(
   helmet({
-    contentSecurityPolicy: false, // Allow local development scripts & assets
+    contentSecurityPolicy: false,
   })
 );
+
 export function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) return true;
 
@@ -78,17 +81,21 @@ export function isAllowedOrigin(origin: string | undefined): boolean {
     .filter(Boolean);
 
   if (env.NODE_ENV !== "production") {
+    if (origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:")) {
+      return true;
+    }
     const devOrigins = [
       ...configuredOrigins,
       "http://localhost:5173",
       "http://127.0.0.1:5173",
       "http://localhost:4000",
       "http://127.0.0.1:4000",
+      "http://localhost:8080",
+      "http://127.0.0.1:8080",
     ];
     return devOrigins.includes(origin) || devOrigins.includes("*");
   }
 
-  // In production, strictly reject wildcard "*" and match only exact explicit origins
   const explicitOrigins = configuredOrigins.filter((o) => o !== "*");
   return explicitOrigins.includes(origin);
 }
@@ -133,8 +140,12 @@ apiV1.use("/", analyticsRouter);
 apiV1.use("/feedback", feedbackRouter);
 apiV1.use("/settings", settingsRouter);
 apiV1.use("/integrations", integrationsRouter);
+apiV1.use("/glossary", glossaryRouter);
+apiV1.use("/tickets", ticketRouter);
+apiV1.use("/diagrams", diagramRouter);
 
 app.use("/api/v1", apiV1);
+app.use("/api", apiV1);
 
 // 404 Handler
 app.use((req: Request, res: Response) => {

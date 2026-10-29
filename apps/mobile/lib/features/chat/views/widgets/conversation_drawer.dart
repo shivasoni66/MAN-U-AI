@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
+import '../../../../core/theme/widgets/terminal_components.dart';
 import '../../../auth/controllers/auth_controller.dart';
 import '../../../auth/models/auth_state.dart';
 import '../../controllers/chat_controller.dart';
 import '../../controllers/conversation_controller.dart';
 
+/// Terminal Cobalt Mobile Conversation Drawer
+/// Operational telemetry panel for navigating past diagnostic logs.
 class ConversationDrawer extends ConsumerWidget {
   const ConversationDrawer({super.key});
 
@@ -16,17 +20,29 @@ class ConversationDrawer extends ConsumerWidget {
 
     if (difference.inMinutes < 60) {
       final mins = difference.inMinutes;
-      return mins <= 1 ? 'Just now' : '$mins mins ago';
+      return mins <= 1 ? 'JUST NOW' : '$mins MINS AGO';
     }
     if (difference.inHours < 24) {
       final hours = difference.inHours;
-      return '$hours hr${hours > 1 ? 's' : ''} ago';
+      return '$hours HR${hours > 1 ? 'S' : ''} AGO';
     }
     if (difference.inDays < 7) {
       final days = difference.inDays;
-      return '$days day${days > 1 ? 's' : ''} ago';
+      return '$days DAY${days > 1 ? 'S' : ''} AGO';
     }
     return '${dt.month}/${dt.day}/${dt.year}';
+  }
+
+  Color _getCategoricalColor(int index) {
+    const palette = [
+      AppColors.accentCategorical1,
+      AppColors.accentCategorical2,
+      AppColors.accentCategorical3,
+      AppColors.accentCategorical4,
+      AppColors.accentCategorical5,
+      AppColors.accentCategorical6,
+    ];
+    return palette[index % palette.length];
   }
 
   @override
@@ -37,7 +53,11 @@ class ConversationDrawer extends ConsumerWidget {
     final currentUser = authState is Authenticated ? authState.user : null;
 
     return Drawer(
-      backgroundColor: AppColors.surface1,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.zero,
+        side: BorderSide(color: AppColors.border, width: 1.0),
+      ),
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -51,39 +71,32 @@ class ConversationDrawer extends ConsumerWidget {
                   Row(
                     children: [
                       Container(
-                        width: 32.0,
-                        height: 32.0,
+                        width: 36.0,
+                        height: 36.0,
                         decoration: BoxDecoration(
-                          color: AppColors.surface2,
+                          color: AppColors.surfaceAlt,
                           borderRadius: BorderRadius.circular(8.0),
-                          border: Border.all(color: AppColors.hairlineStrong),
+                          border: Border.all(color: AppColors.primary, width: 2.0),
                         ),
-                        child: const Icon(
-                          Icons.precision_manufacturing_rounded,
-                          color: AppColors.primary,
-                          size: 18.0,
+                        child: const Center(
+                          child: Icon(
+                            Icons.bolt_rounded,
+                            color: AppColors.primary,
+                            size: 20.0,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 10.0),
-                      const Column(
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             'MAN-U-AI',
-                            style: TextStyle(
-                              fontSize: 16.0,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.ink,
-                              letterSpacing: -0.3,
-                            ),
+                            style: AppTypography.headlineMd.copyWith(fontSize: 16.0),
                           ),
                           Text(
-                            'Consultation History',
-                            style: TextStyle(
-                              fontSize: 11.0,
-                              color: AppColors.primaryHover,
-                              fontWeight: FontWeight.w500,
-                            ),
+                            'TELEMETRY LOGS',
+                            style: AppTypography.caption.copyWith(color: AppColors.primary),
                           ),
                         ],
                       ),
@@ -91,162 +104,156 @@ class ConversationDrawer extends ConsumerWidget {
                   ),
                   const SizedBox(height: 16.0),
 
-                  // New Consultation Button
-                  ElevatedButton.icon(
-                    key: const Key('drawer_new_consultation_button'),
+                  // Start New Consultation Button
+                  MachinedPrimaryButton(
+                    buttonKey: const Key('drawer_new_consultation_button'),
+                    label: 'NEW CONSULTATION',
+                    height: 44.0,
+                    icon: Icons.add_rounded,
                     onPressed: () {
                       ref.read(chatControllerProvider.notifier).startNewConsultation();
                       Navigator.of(context).pop();
                     },
-                    icon: const Icon(Icons.add_rounded, size: 18.0),
-                    label: const Text('New Consultation'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 10.0),
-                      textStyle: const TextStyle(fontSize: 13.0, fontWeight: FontWeight.w600),
-                    ),
                   ),
                 ],
               ),
             ),
-            const Divider(color: AppColors.hairline, height: 1.0),
 
-            // Conversation History List
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16.0),
+              child: SectionHeader(
+                title: 'CONSULTATION SESSIONS',
+                padding: EdgeInsets.symmetric(vertical: 8.0),
+              ),
+            ),
+
+            // Conversation List
             Expanded(
               child: conversationsAsync.when(
                 loading: () => const Center(
-                  child: CircularProgressIndicator(strokeWidth: 2.0),
+                  child: SizedBox(
+                    width: 20.0,
+                    height: 20.0,
+                    child: CircularProgressIndicator(strokeWidth: 2.0),
+                  ),
                 ),
-                error: (err, stack) => Padding(
+                error: (err, _) => Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.error_outline_rounded, color: AppColors.danger, size: 28.0),
+                      const Icon(Icons.error_outline_rounded,
+                          color: AppColors.error, size: 28.0),
                       const SizedBox(height: 8.0),
                       Text(
-                        'Failed to load history: $err',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: AppColors.inkMuted, fontSize: 12.0),
+                        'COULD NOT LOAD SESSIONS',
+                        style: AppTypography.caption.copyWith(color: AppColors.error),
                       ),
-                      const SizedBox(height: 12.0),
-                      OutlinedButton(
-                        key: const Key('drawer_retry_history_button'),
-                        onPressed: () => ref.read(conversationListProvider.notifier).refresh(),
-                        child: const Text('Retry'),
+                      const SizedBox(height: 10.0),
+                      SecondaryButton(
+                        label: 'RETRY',
+                        height: 36.0,
+                        onPressed: () => ref.refresh(conversationListProvider),
                       ),
                     ],
                   ),
                 ),
                 data: (conversations) {
                   if (conversations.isEmpty) {
-                    return const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(24.0),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.chat_bubble_outline_rounded,
-                                color: AppColors.inkSubtle, size: 32.0),
-                            SizedBox(height: 10.0),
-                            Text(
-                              'No past consultations',
-                              style: TextStyle(
-                                color: AppColors.ink,
-                                fontSize: 13.0,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            SizedBox(height: 4.0),
-                            Text(
-                              'Start your first plant troubleshooting consultation above.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: AppColors.inkSubtle,
-                                fontSize: 11.5,
-                              ),
-                            ),
-                          ],
-                        ),
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.chat_bubble_outline_rounded,
+                              size: 28.0, color: AppColors.onSurfaceVariant),
+                          const SizedBox(height: 8.0),
+                          Text(
+                            'NO PRIOR SESSIONS LOGGED',
+                            style: AppTypography.caption,
+                          ),
+                        ],
                       ),
                     );
                   }
 
                   return ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
                     itemCount: conversations.length,
                     itemBuilder: (context, index) {
                       final conv = conversations[index];
                       final isSelected = conv.id == activeConvId;
+                      final catColor = _getCategoricalColor(index);
 
                       return Container(
-                        key: Key('conversation_item_${conv.id}'),
-                        margin: const EdgeInsets.only(bottom: 4.0),
+                        margin: const EdgeInsets.only(bottom: 8.0),
                         decoration: BoxDecoration(
-                          color: isSelected
-                              ? AppColors.surface3
-                              : Colors.transparent,
+                          color: isSelected ? AppColors.surfaceMuted : AppColors.surfaceAlt,
                           borderRadius: BorderRadius.circular(8.0),
                           border: Border.all(
-                            color: isSelected
-                                ? AppColors.hairlineStrong
-                                : Colors.transparent,
+                            color: isSelected ? AppColors.primary : AppColors.border,
+                            width: 1.0,
                           ),
                         ),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 2.0),
-                          dense: true,
-                          title: Text(
-                            conv.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                              color: isSelected ? AppColors.ink : AppColors.inkMuted,
-                            ),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (conv.equipmentName != null) ...[
-                                const SizedBox(height: 2.0),
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.precision_manufacturing_rounded,
-                                      size: 11.0,
-                                      color: AppColors.primaryHover,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(8.0),
+                            onTap: () {
+                              ref.read(chatControllerProvider.notifier).selectConversation(conv);
+                              Navigator.of(context).pop();
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(12.0),
+                              child: Row(
+                                children: [
+                                  // Categorical Identity Dot inside 32px tile
+                                  Container(
+                                    width: 32.0,
+                                    height: 32.0,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.surface,
+                                      borderRadius: BorderRadius.circular(6.0),
+                                      border: Border.all(color: AppColors.border, width: 1.0),
                                     ),
-                                    const SizedBox(width: 4.0),
-                                    Expanded(
-                                      child: Text(
-                                        conv.equipmentName!,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 10.5,
-                                          color: AppColors.primaryHover,
-                                          fontWeight: FontWeight.w500,
+                                    child: Center(
+                                      child: Container(
+                                        width: 8.0,
+                                        height: 8.0,
+                                        decoration: BoxDecoration(
+                                          color: catColor,
+                                          shape: BoxShape.circle,
                                         ),
                                       ),
                                     ),
-                                  ],
-                                ),
-                              ],
-                              const SizedBox(height: 2.0),
-                              Text(
-                                _formatTimestamp(conv.lastMessageAt ?? conv.createdAt),
-                                style: const TextStyle(
-                                  fontSize: 10.0,
-                                  color: AppColors.inkSubtle,
-                                ),
+                                  ),
+                                  const SizedBox(width: 10.0),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          conv.title.isNotEmpty ? conv.title : 'UNTITLED SESSION',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: AppTypography.bodyMd.copyWith(
+                                            fontSize: 12.5,
+                                            color: isSelected ? Colors.white : AppColors.onSurface,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2.0),
+                                        Text(
+                                          '${conv.equipmentName ?? "GENERAL"} // ${_formatTimestamp(conv.lastMessageAt ?? conv.createdAt)}',
+                                          style: AppTypography.caption,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (isSelected)
+                                    const StatusDot(color: AppColors.primary, size: 8.0),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
-                          onTap: () {
-                            ref.read(chatControllerProvider.notifier).selectConversation(conv);
-                            Navigator.of(context).pop();
-                          },
                         ),
                       );
                     },
@@ -255,26 +262,16 @@ class ConversationDrawer extends ConsumerWidget {
               ),
             ),
 
-            const Divider(color: AppColors.hairline, height: 1.0),
+            const Divider(color: AppColors.border, height: 1.0),
 
             // User Profile & Sign Out Footer
             Padding(
-              padding: const EdgeInsets.all(12.0),
+              padding: const EdgeInsets.all(16.0),
               child: Row(
                 children: [
-                  CircleAvatar(
-                    radius: 16.0,
-                    backgroundColor: AppColors.surface3,
-                    child: Text(
-                      currentUser?.name.isNotEmpty == true
-                          ? currentUser!.name[0].toUpperCase()
-                          : 'U',
-                      style: const TextStyle(
-                        fontSize: 12.0,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.ink,
-                      ),
-                    ),
+                  SquareAvatar(
+                    size: 40.0,
+                    initial: currentUser?.name,
                   ),
                   const SizedBox(width: 10.0),
                   Expanded(
@@ -282,34 +279,26 @@ class ConversationDrawer extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          currentUser?.name ?? 'Facility Technician',
-                          style: const TextStyle(
-                            fontSize: 12.0,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.ink,
-                          ),
+                          currentUser?.name ?? 'OPERATOR',
+                          style: AppTypography.bodyMd.copyWith(fontSize: 12.5),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
-                          currentUser?.role == 'engineer' ? 'ENGINEER' : 'OPERATOR',
-                          style: const TextStyle(
-                            fontSize: 10.0,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.primaryHover,
-                            letterSpacing: 0.5,
+                          (currentUser?.role ?? 'VIEWER').toUpperCase(),
+                          style: AppTypography.caption.copyWith(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  IconButton(
+                  ButtonIconTile(
                     key: const Key('drawer_logout_button'),
-                    icon: const Icon(
-                      Icons.logout_rounded,
-                      size: 18.0,
-                      color: AppColors.inkSubtle,
-                    ),
+                    icon: Icons.logout_rounded,
+                    size: 36.0,
+                    iconColor: AppColors.error,
                     tooltip: 'Sign out',
                     onPressed: () {
                       ref.read(authControllerProvider.notifier).logout();

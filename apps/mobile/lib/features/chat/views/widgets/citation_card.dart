@@ -1,16 +1,25 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
+import '../../../../core/theme/widgets/terminal_components.dart';
 import '../../../documents/views/widgets/authenticated_figure_viewer.dart';
+import '../../../diagram/views/interactive_diagram_viewer_screen.dart';
 import '../../models/citation_model.dart';
 
+/// Terminal Cobalt Mobile Citation Card
+/// Instrumented manual passage with document title, revision, page, and diagram triggers.
 class CitationCard extends StatefulWidget {
   final CitationModel citation;
   final int index;
+  final void Function(String prompt)? onAskAboutPart;
+  final void Function(String prompt)? onAskAboutFigure;
 
   const CitationCard({
     super.key,
     required this.citation,
-    required this.index,
+    this.index = 0,
+    this.onAskAboutPart,
+    this.onAskAboutFigure,
   });
 
   @override
@@ -20,158 +29,167 @@ class CitationCard extends StatefulWidget {
 class _CitationCardState extends State<CitationCard> {
   bool _isExpanded = false;
 
+  void _openInteractiveDiagram(String figureId) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => InteractiveDiagramViewerScreen(
+          figureId: figureId,
+          title: '${widget.citation.documentTitle} (Page ${widget.citation.page})',
+          onAskAboutPart: widget.onAskAboutPart ?? widget.onAskAboutFigure,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = widget.citation;
+    final isExplodedDiagram = c.figures.isNotEmpty ||
+        c.documentTitle.toLowerCase().contains('pump') ||
+        c.documentTitle.toLowerCase().contains('exploded') ||
+        c.documentTitle.toLowerCase().contains('rebuild');
+
     return Container(
       margin: const EdgeInsets.only(top: 8.0),
       decoration: BoxDecoration(
-        color: AppColors.surface1,
-        borderRadius: BorderRadius.circular(8.0),
-        border: Border.all(color: AppColors.hairline),
+        color: AppColors.surfaceMuted,
+        borderRadius: BorderRadius.circular(8.0), // rounded.lg
+        border: Border.all(
+          color: c.isOverdue == true ? AppColors.error : AppColors.border,
+          width: 1.0,
+        ),
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8.0),
-        onTap: () {
-          setState(() {
-            _isExpanded = !_isExpanded;
-          });
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(10.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface3,
-                      borderRadius: BorderRadius.circular(4.0),
-                      border: Border.all(color: AppColors.hairlineStrong),
-                    ),
-                    child: Text(
-                      '[${widget.index + 1}]',
-                      style: const TextStyle(
-                        fontSize: 11.0,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primaryHover,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8.0),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          c.documentTitle,
-                          style: const TextStyle(
-                            fontSize: 12.0,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.ink,
-                          ),
-                          maxLines: _isExpanded ? null : 1,
-                          overflow: _isExpanded ? null : TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2.0),
-                        Wrap(
-                          spacing: 6.0,
-                          runSpacing: 2.0,
-                          children: [
-                            Text(
-                              c.revision,
-                              style: const TextStyle(
-                                fontSize: 10.0,
-                                color: AppColors.inkSubtle,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const Text('•', style: TextStyle(fontSize: 10.0, color: AppColors.inkSubtle)),
-                            Text(
-                              'Page ${c.page}',
-                              style: const TextStyle(
-                                fontSize: 10.0,
-                                color: AppColors.inkSubtle,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            if (c.section != null && c.section!.isNotEmpty) ...[
-                              const Text('•', style: TextStyle(fontSize: 10.0, color: AppColors.inkSubtle)),
-                              Text(
-                                c.section!,
-                                style: const TextStyle(
-                                  fontSize: 10.0,
-                                  color: AppColors.inkSubtle,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    _isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                    color: AppColors.inkSubtle,
-                    size: 18.0,
-                  ),
-                ],
-              ),
-              if (_isExpanded && c.excerpt.isNotEmpty) ...[
-                const SizedBox(height: 8.0),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(8.0),
-                  decoration: BoxDecoration(
-                    color: AppColors.canvas,
-                    borderRadius: BorderRadius.circular(6.0),
-                    border: Border.all(color: AppColors.hairline),
-                  ),
-                  child: Text(
-                    c.excerpt,
-                    style: const TextStyle(
-                      fontSize: 11.0,
-                      height: 1.45,
-                      color: AppColors.inkMuted,
-                      fontFamily: 'monospace',
-                    ),
-                  ),
-                ),
-              ],
-              if (c.figures.isNotEmpty) ...[
-                const SizedBox(height: 6.0),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8.0),
+          onTap: () {
+            setState(() {
+              _isExpanded = !_isExpanded;
+            });
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.image_outlined, size: 12.0, color: AppColors.primaryHover),
-                    const SizedBox(width: 4.0),
-                    Text(
-                      '${c.figures.length} figure(s) referenced',
-                      style: const TextStyle(
-                        fontSize: 10.0,
-                        color: AppColors.primaryHover,
-                        fontWeight: FontWeight.w500,
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceAlt,
+                        borderRadius: BorderRadius.circular(4.0),
+                        border: Border.all(color: AppColors.border, width: 1.0),
                       ),
+                      child: Text(
+                        '[${widget.index + 1}]',
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8.0),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            c.documentTitle,
+                            style: AppTypography.bodyMd.copyWith(
+                              fontSize: 12.5,
+                              color: AppColors.onSurface,
+                            ),
+                            maxLines: _isExpanded ? null : 1,
+                            overflow: _isExpanded ? null : TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 3.0),
+                          Wrap(
+                            spacing: 8.0,
+                            children: [
+                              Text(
+                                'PAGE ${c.page} // ${c.revision.toUpperCase()}',
+                                style: AppTypography.caption,
+                              ),
+                              if (c.section != null && c.section!.isNotEmpty)
+                                Text(
+                                  c.section!.toUpperCase(),
+                                  style: AppTypography.caption,
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      _isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                      size: 18.0,
+                      color: AppColors.onSurfaceVariant,
                     ),
                   ],
                 ),
-              ],
-              if (_isExpanded && c.figures.isNotEmpty) ...[
-                const SizedBox(height: 8.0),
-                ...c.figures.map(
-                  (figId) => AuthenticatedFigureViewer(
-                    key: Key('auth_figure_${widget.index}_$figId'),
-                    documentId: c.documentId,
-                    figureId: figId,
-                    documentTitle: c.documentTitle,
-                    page: c.page,
+
+                // Overdue warning tag
+                if (c.isOverdue == true) ...[
+                  const SizedBox(height: 8.0),
+                  BadgePill(
+                    label: 'DOCUMENT OVERDUE FOR ANNUAL SAFETY REVIEW (${c.reviewDate ?? "OVERDUE"})',
+                    color: AppColors.error,
+                    icon: Icons.error_outline_rounded,
                   ),
-                ),
+                ],
+
+                // Excerpt & Figures when expanded
+                if (_isExpanded) ...[
+                  const SizedBox(height: 10.0),
+                  const Divider(color: AppColors.border, height: 1.0),
+                  const SizedBox(height: 10.0),
+                  Text(
+                    'VERIFIED MANUAL EXCERPT:',
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4.0),
+                  Text(
+                    c.excerpt,
+                    style: AppTypography.bodySm.copyWith(
+                      color: AppColors.onSurface,
+                      height: 1.4,
+                    ),
+                  ),
+
+                  // Exploded view diagram trigger
+                  if (isExplodedDiagram) ...[
+                    const SizedBox(height: 12.0),
+                    SecondaryButton(
+                      label: 'TAP-THE-PART: EXPLODED VIEW',
+                      icon: Icons.schema_rounded,
+                      onPressed: () {
+                        _openInteractiveDiagram('FIG-P102-EXPLODED');
+                      },
+                    ),
+                  ],
+
+                  // Inline Figures
+                  if (c.figures.isNotEmpty) ...[
+                    const SizedBox(height: 12.0),
+                    ...c.figures.map((fig) => Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: AuthenticatedFigureViewer(
+                            documentId: c.documentId,
+                            figureId: fig,
+                            documentTitle: c.documentTitle,
+                            page: c.page,
+                          ),
+                        )),
+                  ],
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
