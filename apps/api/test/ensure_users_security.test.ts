@@ -2,12 +2,24 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import bcrypt from "bcryptjs";
 import { ensureUsers, isLocalDatabaseUri } from "../src/scripts/ensure-users";
 import { User } from "../src/models";
-import { isConnectedToMongo, connectDatabase } from "../src/config/database";
+import {
+  isConnectedToMongo,
+  connectDatabase,
+  assertSafeTestDatabase,
+} from "../src/config/database";
 
 describe("Ensure-Users Script Production Security & Safeguards", () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalMongoUri = process.env.MONGODB_URI;
   const originalAllowRemote = process.env.ALLOW_REMOTE_DEV_SEED;
+  const originalSeedPassword = process.env.INITIAL_SEED_PASSWORD;
+
+  // Use isolated test database URI supplied by CI, or fallback to local test database
+  const testDatabaseUri =
+    process.env.TEST_MONGODB_URI || "mongodb://127.0.0.1:27017/manuai_test";
+
+  // Validate that the test database URI strictly satisfies test database safety policies
+  assertSafeTestDatabase(testDatabaseUri);
 
   const testEmails = [
     "admin@plant.io",
@@ -18,36 +30,114 @@ describe("Ensure-Users Script Production Security & Safeguards", () => {
   ];
 
   beforeEach(async () => {
+    // Explicitly configure test fixture to use isolated, safe local test database and dev seed password
+    process.env.MONGODB_URI = testDatabaseUri;
+    process.env.INITIAL_SEED_PASSWORD = "TestDevSeedPassword123!";
+
     if (!isConnectedToMongo) {
-      await connectDatabase();
+      await connectDatabase(testDatabaseUri);
     }
     await User.deleteMany({ email: { $in: testEmails } });
   });
 
   afterEach(async () => {
-    process.env.NODE_ENV = originalNodeEnv;
-    process.env.MONGODB_URI = originalMongoUri;
+    if (originalNodeEnv !== undefined) {
+      process.env.NODE_ENV = originalNodeEnv;
+    } else {
+      delete process.env.NODE_ENV;
+    }
+
+    if (originalMongoUri !== undefined) {
+      process.env.MONGODB_URI = originalMongoUri;
+    } else {
+      delete process.env.MONGODB_URI;
+    }
+
     if (originalAllowRemote !== undefined) {
       process.env.ALLOW_REMOTE_DEV_SEED = originalAllowRemote;
     } else {
       delete process.env.ALLOW_REMOTE_DEV_SEED;
     }
+
+    if (originalSeedPassword !== undefined) {
+      process.env.INITIAL_SEED_PASSWORD = originalSeedPassword;
+    } else {
+      delete process.env.INITIAL_SEED_PASSWORD;
+    }
+
     if (isConnectedToMongo) {
       await User.deleteMany({ email: { $in: testEmails } });
     }
   });
 
   describe("isLocalDatabaseUri", () => {
-    it("identifies localhost and loopback IP connections as local", () => {
-      expect(isLocalDatabaseUri("mongodb://127.0.0.1:27017/manuai")).toBe(true);
+    it("identifies localhost and loopback IPv4/IPv6 connections as local", () => {
+      // Localhost
       expect(isLocalDatabaseUri("mongodb://localhost:27017/manuai")).toBe(true);
-      expect(isLocalDatabaseUri("mongodb://0.0.0.0:27017/manuai")).toBe(true);
+      // IPv4 loopback
+      expect(isLocalDatabaseUri("mongodb://127.0.0.1:27017/manuai")).toBe(true);
+      expect(isLocalDatabaseUri("mongodb://127.0.0.2:27017/manuai")).toBe(true);
+      // IPv6 loopback
+      expect(isLocalDatabaseUri("mongodb://[::1]:27017/manuai")).toBe(true);
+      // Comma-separated replica set with all loopback hosts
+      expect(
+        isLocalDatabaseUri("mongodb://127.0.0.1:27017,localhost:27018,127.0.0.2:27019/manuai")
+      ).toBe(true);
     });
 
-    it("rejects remote cloud atlas and non-localhost connection strings", () => {
-      expect(isLocalDatabaseUri("mongodb+srv://admin:secret@manuai-cluster.mongodb.net/production")).toBe(false);
-      expect(isLocalDatabaseUri("mongodb://db.plant.corp:27017/production")).toBe(false);
+    it("rejects remote database even when password contains 'localhost'", () => {
+      expect(
+        isLocalDatabaseUri("mongodb://admin:localhost@db.production.com:27017/manuai")
+      ).toBe(false);
+      expect(
+        isLocalDatabaseUri("mongodb://admin:pass_localhost_99@remote.internal:27017/manuai")
+      ).toBe(false);
+    });
+
+    it("rejects remote database even when username contains 'localhost'", () => {
+      expect(
+        isLocalDatabaseUri("mongodb://localhost:secret@10.0.0.5:27017/manuai")
+      ).toBe(false);
+      expect(
+        isLocalDatabaseUri("mongodb://localhost_user:secret@remote.internal:27017/manuai")
+      ).toBe(false);
+    });
+
+    it("rejects MongoDB Atlas clusters (both SRV and standard protocol)", () => {
+      expect(
+        isLocalDatabaseUri("mongodb+srv://admin:secret@manuai-cluster.mongodb.net/production")
+      ).toBe(false);
+      expect(
+        isLocalDatabaseUri("mongodb://admin:secret@manuai-cluster.mongodb.net:27017/production")
+      ).toBe(false);
+    });
+
+    it("rejects remote IP addresses and domain hosts", () => {
       expect(isLocalDatabaseUri("mongodb://10.0.0.5:27017/production")).toBe(false);
+      expect(isLocalDatabaseUri("mongodb://192.168.1.100:27017/production")).toBe(false);
+      expect(isLocalDatabaseUri("mongodb://db.plant.corp:27017/production")).toBe(false);
+    });
+
+    it("rejects multiple-host replica URI containing one or more remote hosts", () => {
+      expect(
+        isLocalDatabaseUri("mongodb://127.0.0.1:27017,10.0.0.5:27017/manuai")
+      ).toBe(false);
+      expect(
+        isLocalDatabaseUri("mongodb://localhost:27017,remote.server.com:27017/manuai")
+      ).toBe(false);
+    });
+
+    it("rejects malformed, empty, or non-mongodb URIs", () => {
+      expect(isLocalDatabaseUri("not-a-mongo-uri")).toBe(false);
+      expect(isLocalDatabaseUri("http://localhost:27017/manuai")).toBe(false);
+      expect(isLocalDatabaseUri("")).toBe(false);
+      expect(isLocalDatabaseUri(null as any)).toBe(false);
+      expect(isLocalDatabaseUri(undefined as any)).toBe(false);
+    });
+
+    it("never treats IPv6 unspecified address :: or IPv4 0.0.0.0 as loopback", () => {
+      expect(isLocalDatabaseUri("mongodb://[::]:27017/manuai")).toBe(false);
+      expect(isLocalDatabaseUri("mongodb://0.0.0.0:27017/manuai")).toBe(false);
     });
   });
 
@@ -73,9 +163,36 @@ describe("Ensure-Users Script Production Security & Safeguards", () => {
     });
   });
 
+  describe("Initial Seed Password Requirement", () => {
+    it("fails with clear error when INITIAL_SEED_PASSWORD is missing and creates no users", async () => {
+      process.env.NODE_ENV = "development";
+      delete process.env.INITIAL_SEED_PASSWORD;
+
+      await expect(ensureUsers()).rejects.toThrowError(
+        /\[Security Policy Violation\] INITIAL_SEED_PASSWORD environment variable is required/i
+      );
+
+      const users = await User.find({ email: { $in: testEmails } });
+      expect(users).toHaveLength(0);
+    });
+
+    it("fails with clear error when INITIAL_SEED_PASSWORD is empty or whitespace and creates no users", async () => {
+      process.env.NODE_ENV = "development";
+      process.env.INITIAL_SEED_PASSWORD = "   ";
+
+      await expect(ensureUsers()).rejects.toThrowError(
+        /\[Security Policy Violation\] INITIAL_SEED_PASSWORD environment variable is required/i
+      );
+
+      const users = await User.find({ email: { $in: testEmails } });
+      expect(users).toHaveLength(0);
+    });
+  });
+
   describe("Account Preservation & Absence of Fixed Privileged Accounts", () => {
     it("does not create or define unsafe hardcoded accounts (admin@gmail.com, manager@gmail.com)", async () => {
       process.env.NODE_ENV = "development";
+      process.env.INITIAL_SEED_PASSWORD = "TestDevSeedPassword123!";
 
       const result = await ensureUsers();
       expect(result.created).not.toContain("admin@gmail.com");
@@ -92,6 +209,7 @@ describe("Ensure-Users Script Production Security & Safeguards", () => {
 
     it("never silently overwrites an existing user's password or promotes their role", async () => {
       process.env.NODE_ENV = "development";
+      process.env.INITIAL_SEED_PASSWORD = "TestDevSeedPassword123!";
 
       const testEmail = "admin@plant.io";
       const customPassword = "CustomOperatorPassword-999!";

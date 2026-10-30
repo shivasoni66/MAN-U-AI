@@ -4,26 +4,42 @@ import dotenv from "dotenv";
 import path from "path";
 import { User } from "../models";
 import { cleanMongoUri, sanitizeMongoMessage } from "./provision-user";
+import { parseMongoUriComponents, isLocalLoopbackHost } from "../config/database";
 
 dotenv.config({ path: path.resolve(__dirname, "../../../../.env") });
 
 /**
- * Validates whether the given connection URI points to a local/loopback database instance.
+ * Validates whether the given connection URI points strictly to a local/loopback database instance.
+ * Uses strict authority and hostname parsing to reject remote databases, Atlas SRV URIs,
+ * and remote hosts that contain "localhost" in credentials.
  */
 export function isLocalDatabaseUri(uri: string): boolean {
-  if (!uri) return false;
-  const cleaned = cleanMongoUri(uri).toLowerCase();
-  if (cleaned.startsWith("mongodb+srv://")) return false;
-  return (
-    cleaned.includes("localhost") ||
-    cleaned.includes("127.0.0.1") ||
-    cleaned.includes("::1") ||
-    cleaned.includes("0.0.0.0")
-  );
+  if (!uri || typeof uri !== "string" || uri.trim() === "") {
+    return false;
+  }
+  const cleaned = cleanMongoUri(uri);
+  if (!cleaned) return false;
+
+  const components = parseMongoUriComponents(cleaned);
+
+  // Reject invalid schemes, mongodb+srv, and empty host lists
+  if (components.scheme !== "mongodb" || components.isSrv || components.hosts.length === 0) {
+    return false;
+  }
+
+  // Reject MongoDB Atlas even if standard mongodb:// is used
+  if (components.isAtlas) {
+    return false;
+  }
+
+  // All replica-set hosts must be verified local loopback hosts (localhost, 127.0.0.0/8, ::1)
+  // Rejects remote IPs, unspecified addresses like :: or 0.0.0.0, and multi-host URIs containing any remote host
+  return components.hosts.every((host) => isLocalLoopbackHost(host));
 }
 
 export interface EnsureUsersOptions {
   allowRemote?: boolean;
+  mongoUri?: string;
 }
 
 /**
@@ -41,8 +57,8 @@ export async function ensureUsers(options?: EnsureUsersOptions): Promise<{ creat
     );
   }
 
-  const rawUri = process.env.MONGODB_URI;
-  if (!rawUri) {
+  const rawUri = options?.mongoUri || process.env.MONGODB_URI;
+  if (!rawUri || rawUri.trim() === "") {
     throw new Error("MONGODB_URI environment variable is required.");
   }
 
@@ -58,15 +74,21 @@ export async function ensureUsers(options?: EnsureUsersOptions): Promise<{ creat
     );
   }
 
+  // 3. Required Explicit Development Seed Password Guard (No hardcoded fallback password)
+  const devPassword = process.env.INITIAL_SEED_PASSWORD;
+  if (!devPassword || devPassword.trim() === "") {
+    throw new Error(
+      "[Security Policy Violation] INITIAL_SEED_PASSWORD environment variable is required for development seeding. " +
+        "Hardcoded fallback passwords are forbidden. Supply INITIAL_SEED_PASSWORD in your environment."
+    );
+  }
+
   console.log(`[Security] Connecting to development MongoDB (${sanitizeMongoMessage(rawUri)})...`);
   if (mongoose.connection.readyState === 0) {
     await mongoose.connect(rawUri);
   }
 
-  // 3. Allowed Development Demo Accounts ONLY (No hardcoded admin/manager production accounts)
-  // Passwords are configurable via environment (INITIAL_SEED_PASSWORD) or fallback to strong dev-only defaults
-  const devPassword = process.env.INITIAL_SEED_PASSWORD || "DevOnlyPlantPass123!";
-
+  // 4. Allowed Development Demo Accounts ONLY (No hardcoded admin/manager production accounts)
   const devAccounts = [
     {
       name: "Elena Rostova (Dev Admin)",
