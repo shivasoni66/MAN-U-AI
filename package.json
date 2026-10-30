@@ -5,11 +5,19 @@
   "scripts": {
     "dev": "pnpm --parallel -r dev",
     "dev:web": "pnpm --filter @man-u-ai/web dev",
+    "dev:admin": "pnpm --filter @man-u-ai/admin dev",
+    "dev:manager": "pnpm --filter @man-u-ai/manager dev",
+    "dev:portal": "pnpm --filter @man-u-ai/portal dev",
     "dev:api": "pnpm --filter @man-u-ai/api dev",
     "build": "pnpm -r build",
+    "build:admin": "pnpm --filter @man-u-ai/admin build",
+    "build:manager": "pnpm --filter @man-u-ai/manager build",
+    "build:portal": "pnpm --filter @man-u-ai/portal build",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
+    "test:admin": "pnpm --filter @man-u-ai/admin test",
+    "test:manager": "pnpm --filter @man-u-ai/manager test",
     "clean": "pnpm -r exec -- rimraf dist node_modules .turbo"
   },
   "engines": {

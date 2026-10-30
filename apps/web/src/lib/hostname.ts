@@ -42,7 +42,8 @@ export function getCurrentHostname(): string {
  * Manager workspace, or the main/root portal.
  */
 export function getHostnameType(hostname?: string): HostnameType {
-  const host = (hostname !== undefined ? hostname : getCurrentHostname()).toLowerCase().trim();
+  const raw = (hostname !== undefined ? hostname : getCurrentHostname()).toLowerCase().trim();
+  const host = raw.split(":")[0];
   if (host === PRODUCTION_DOMAINS.admin || host.startsWith("admin.")) {
     return "admin";
   }
