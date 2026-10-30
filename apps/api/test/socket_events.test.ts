@@ -28,6 +28,8 @@ describe("Socket.IO Real-time Events & Authorization (Requirement 7)", () => {
       { id: "usr-outsider-00", name: "Outsider", email: "outsider@plant.io", role: "viewer" },
     ];
 
+    await User.deleteMany({ email: { $in: testUsers.map((u) => u.email) } });
+
     for (const u of testUsers) {
       await User.findByIdAndUpdate(
         toMongoObjectId(u.id),
