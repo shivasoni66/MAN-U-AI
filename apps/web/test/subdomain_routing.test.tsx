@@ -39,6 +39,16 @@ vi.mock("../src/lib/api", async (importOriginal) => {
     usersApi: {
       ...actual.usersApi,
       list: vi.fn().mockResolvedValue({ data: { success: true, data: [] } }),
+      create: vi.fn().mockResolvedValue({ data: { success: true } }),
+      updateRole: vi.fn().mockResolvedValue({ data: { success: true } }),
+      delete: vi.fn().mockResolvedValue({ data: { success: true } }),
+    },
+    settingsApi: {
+      get: vi.fn().mockResolvedValue({ data: { success: true, data: {} } }),
+      update: vi.fn().mockResolvedValue({ data: { success: true, data: {} } }),
+    },
+    auditApi: {
+      list: vi.fn().mockResolvedValue({ data: { success: true, data: [] } }),
     },
     analyticsApi: {
       ...actual.analyticsApi,
@@ -183,6 +193,17 @@ describe("Subdomain-Aware Routing & Cross-Panel Navigation", () => {
       expect(screen.getAllByText(/System Administration/i).length).toBeGreaterThan(0);
     });
 
+    it("redirects authenticated non-Admin (viewer) from root (/) to access-denied page (/unsupported-access)", async () => {
+      renderAppWithRouter("/", "viewer");
+      expect(await screen.findByRole("heading", { name: /Workspace access unavailable/i })).toBeDefined();
+      expect(screen.getByText(/This account does not have a supported web-panel role/i)).toBeDefined();
+    });
+
+    it("redirects authenticated Manager from admin domain root (/) to manager subdomain workspace", () => {
+      renderAppWithRouter("/", "manager");
+      expect(redirectedUrl).toBe("https://manager.sharprad-x.tech/manager");
+    });
+
     it("allows direct access to /admin/login", async () => {
       renderAppWithRouter("/admin/login");
       expect(await screen.findByText(/Plant Administration Console/i)).toBeDefined();
@@ -191,6 +212,26 @@ describe("Subdomain-Aware Routing & Cross-Panel Navigation", () => {
     it("allows direct access to /admin/register (provisioning guide)", async () => {
       renderAppWithRouter("/admin/register");
       expect(await screen.findByText(/Administrator Provisioning/i)).toBeDefined();
+    });
+
+    it("allows direct authenticated access to /admin/users", async () => {
+      renderAppWithRouter("/admin/users", "admin");
+      expect(await screen.findByRole("heading", { name: /Personnel & Role Management/i })).toBeDefined();
+    });
+
+    it("allows direct authenticated access to /admin/insights", async () => {
+      renderAppWithRouter("/admin/insights", "admin");
+      expect(await screen.findByRole("heading", { name: /System Insights & Reliability Metrics/i })).toBeDefined();
+    });
+
+    it("allows direct authenticated access to /admin/activity", async () => {
+      renderAppWithRouter("/admin/activity", "admin");
+      expect(await screen.findByRole("heading", { name: /System Activity & Audit Log/i })).toBeDefined();
+    });
+
+    it("allows direct authenticated access to /admin/settings", async () => {
+      renderAppWithRouter("/admin/settings", "admin");
+      expect(await screen.findByRole("heading", { name: /System Settings & Configuration/i })).toBeDefined();
     });
 
     it("redirects generic /login to /admin/login when on admin subdomain", async () => {
@@ -221,6 +262,17 @@ describe("Subdomain-Aware Routing & Cross-Panel Navigation", () => {
       expect(screen.getAllByText(/Operations Workspace/i).length).toBeGreaterThan(0);
     });
 
+    it("redirects authenticated non-Manager (viewer) from root (/) to access-denied page (/unsupported-access)", async () => {
+      renderAppWithRouter("/", "viewer");
+      expect(await screen.findByRole("heading", { name: /Workspace access unavailable/i })).toBeDefined();
+      expect(screen.getByText(/This account does not have a supported web-panel role/i)).toBeDefined();
+    });
+
+    it("redirects authenticated Admin from manager domain root (/) to admin subdomain console", () => {
+      renderAppWithRouter("/", "admin");
+      expect(redirectedUrl).toBe("https://admin.sharprad-x.tech/admin");
+    });
+
     it("allows direct access to /manager/login", async () => {
       renderAppWithRouter("/manager/login");
       expect(await screen.findByText(/Plant Operations Workspace/i)).toBeDefined();
@@ -229,6 +281,21 @@ describe("Subdomain-Aware Routing & Cross-Panel Navigation", () => {
     it("allows direct access to /manager/register (onboarding guide)", async () => {
       renderAppWithRouter("/manager/register");
       expect((await screen.findAllByText(/Plant Operations Enrollment/i)).length).toBeGreaterThan(0);
+    });
+
+    it("allows direct authenticated access to /manager/operations", async () => {
+      renderAppWithRouter("/manager/operations", "manager");
+      expect(await screen.findByRole("heading", { name: /Operational Work Management/i })).toBeDefined();
+    });
+
+    it("allows direct authenticated access to /manager/maintenance", async () => {
+      renderAppWithRouter("/manager/maintenance", "manager");
+      expect(await screen.findByRole("heading", { name: /Maintenance Coordination & Shift Handover/i })).toBeDefined();
+    });
+
+    it("allows direct authenticated access to /manager/knowledge", async () => {
+      renderAppWithRouter("/manager/knowledge", "manager");
+      expect(await screen.findByRole("heading", { name: /Knowledge Library/i })).toBeDefined();
     });
 
     it("redirects generic /login to /manager/login when on manager subdomain", async () => {
@@ -268,6 +335,12 @@ describe("Subdomain-Aware Routing & Cross-Panel Navigation", () => {
     it("redirects authenticated Manager on root (/) to /manager", async () => {
       renderAppWithRouter("/", "manager");
       expect(await screen.findByRole("heading", { name: "Manager Dashboard" })).toBeDefined();
+    });
+
+    it("does not redirect root domain to Admin or Manager when unauthenticated", async () => {
+      renderAppWithRouter("/");
+      expect(redirectedUrl).toBeNull();
+      expect(await screen.findByRole("heading", { name: /Select Workspace Portal/i })).toBeDefined();
     });
 
     it("does not trigger cross-panel external redirects when browsing on the root domain", async () => {
