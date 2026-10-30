@@ -4,6 +4,7 @@ import { DocumentChunk, DocumentModel, IDocumentChunk } from "../models";
 import { isConnectedToMongo } from "../config/database";
 import { env } from "../config/env";
 import { generateDeterministicEmbedding } from "./gemini.service";
+import type { SafetyCategory } from "@man-u-ai/shared";
 
 export interface ScoredChunk {
   chunk: {
@@ -15,6 +16,8 @@ export interface ScoredChunk {
     section?: string;
     text: string;
     figureIds?: string[];
+    safetyCategory?: SafetyCategory;
+    ppeTags?: string[];
   };
   score: number;
 }
@@ -29,6 +32,8 @@ export const DEMO_CHUNKS_FIXTURE: Array<{
   section?: string;
   text: string;
   embedding: number[];
+  safetyCategory?: SafetyCategory;
+  ppeTags?: string[];
 }> = [
   {
     id: "chk-01",
@@ -39,6 +44,8 @@ export const DEMO_CHUNKS_FIXTURE: Array<{
     section: "4.2 Mechanical Seal Rebuild & Dual Cartridge Alignment",
     text: "Mechanical seal replacement on Slurry Pump Model SP-400 requires complete casing depressurization. Tighten four M12 gland retaining nuts in cross-diagonal sequence to 45 N·m. Maximum permissible shaft runout is 0.05 mm. Use FG-2 silicone lubricant for Viton O-rings.",
     embedding: generateDeterministicEmbedding("Mechanical seal replacement on Slurry Pump Model SP-400 requires complete casing depressurization. Tighten four M12 gland retaining nuts in cross-diagonal sequence to 45 N·m. Maximum permissible shaft runout is 0.05 mm. Use FG-2 silicone lubricant for Viton O-rings."),
+    safetyCategory: "general_procedure",
+    ppeTags: ["safety_glasses", "leather_gloves"],
   },
   {
     id: "chk-02",
@@ -49,6 +56,8 @@ export const DEMO_CHUNKS_FIXTURE: Array<{
     section: "3.1 Lockout Tagout Verification",
     text: "Lockout Tagout (LOTO) procedure per OSHA 1910.147. Before servicing hydraulic press HP-400 or centrifugal pump systems, technician must close manual ball valve V-101, apply padlocks, and vent accumulator manifold pressure until zero reading is verified on calibrated test gauge.",
     embedding: generateDeterministicEmbedding("Lockout Tagout (LOTO) procedure per OSHA 1910.147. Before servicing hydraulic press HP-400 or centrifugal pump systems, technician must close manual ball valve V-101, apply padlocks, and vent accumulator manifold pressure until zero reading is verified on calibrated test gauge."),
+    safetyCategory: "loto_isolation",
+    ppeTags: ["dielectric_gloves", "safety_glasses", "steel_toe_boots"],
   },
   {
     id: "chk-03",
@@ -59,6 +68,8 @@ export const DEMO_CHUNKS_FIXTURE: Array<{
     section: "Fault Code E-0247 & Discharge High Temp",
     text: "Fault Code E-0247 indicates hydraulic or pneumatic valve stiction or differential pressure exceeding 1.2 bar across the coalescing separator filter. Inspect scavenging line orifice and verify lubricant level before restarting compressor.",
     embedding: generateDeterministicEmbedding("Fault Code E-0247 indicates hydraulic or pneumatic valve stiction or differential pressure exceeding 1.2 bar across the coalescing separator filter. Inspect scavenging line orifice and verify lubricant level before restarting compressor."),
+    safetyCategory: "general_procedure",
+    ppeTags: ["safety_glasses"],
   },
 ];
 
@@ -72,27 +83,13 @@ let ephemeralMemoryChunks: Array<{
   section?: string;
   text: string;
   embedding: number[];
+  safetyCategory?: SafetyCategory;
+  ppeTags?: string[];
 }> = [];
 
-/**
- * Vector Retrieval Architecture Notice:
- * -------------------------------------------------------------
- * This service implements MongoDB candidate chunk retrieval combined with
- * in-process application-side cosine similarity and keyword boosting,
- * rather than native Atlas Vector Search ($vectorSearch).
- *
- * Rationale & Operational Characteristics:
- * - Compatible with standard MongoDB collections without requiring Atlas Vector Search index provisioning on free M0 tiers.
- * - Chunks are queried from the MongoDB DocumentChunk collection filtered by user-permitted document IDs.
- * - Candidate evaluation is capped at CANDIDATE_CHUNK_LIMIT (500 chunks).
- * - Exact cosine similarity over 768-dimensional embeddings and keyword relevance are evaluated application-side.
- */
 export const CANDIDATE_CHUNK_LIMIT = 500;
 
 export class VectorService {
-  /**
-   * Adds a document chunk into vector index.
-   */
   /**
    * Adds a document chunk into vector index.
    * In production, chunk persistence in MongoDB is mandatory before success.
@@ -109,6 +106,8 @@ export class VectorService {
       text: string;
       embedding: number[];
       figureIds?: string[];
+      safetyCategory?: SafetyCategory;
+      ppeTags?: string[];
     },
     options?: { requireDb?: boolean; allowMemoryFallback?: boolean }
   ): Promise<void> {
@@ -145,6 +144,8 @@ export class VectorService {
         embedding: chunk.embedding,
         figureIds: chunk.figureIds || [],
         tokenCount: Math.ceil(chunk.text.length / 4),
+        safetyCategory: chunk.safetyCategory || "general_procedure",
+        ppeTags: chunk.ppeTags || [],
       });
 
       // Avoid inserting into in-memory cache until persistence is confirmed
@@ -167,8 +168,6 @@ export class VectorService {
   /**
    * Document-scoped cleanup: removes all in-memory chunks for the given document ID
    * and deletes all persisted MongoDB chunks.
-   * Consistently normalizes document IDs before comparison.
-   * If persistent deletion is required but MongoDB is unavailable, reports incomplete cleanup.
    */
   async deleteDocumentChunks(
     documentId: string,
@@ -259,6 +258,9 @@ export class VectorService {
       section?: string;
       text: string;
       embedding: number[];
+      safetyCategory?: SafetyCategory;
+      ppeTags?: string[];
+      figureIds?: string[];
     }> = [];
 
     const isProduction = env.NODE_ENV === "production";
@@ -298,6 +300,8 @@ export class VectorService {
             text: c.text,
             embedding: c.embedding,
             figureIds: (c as any).figureIds || [],
+            safetyCategory: (c as any).safetyCategory || "general_procedure",
+            ppeTags: (c as any).ppeTags || [],
           }));
         }
       } catch (err) {
@@ -320,9 +324,7 @@ export class VectorService {
       candidateChunks = devPool;
     }
 
-    // Strict status verification: In production (or when requireIndexed), only return chunks whose
-    // document record exists in MongoDB and whose status is exactly "indexed".
-    // If database verification fails, fail closed by returning [] instead of returning uncertain chunks.
+    // Strict status verification
     if (isConnectedToMongo && candidateChunks.length > 0) {
       try {
         const candidateOids = candidateChunks
@@ -339,10 +341,8 @@ export class VectorService {
           const indexedIdSet = new Set(indexedDocs.map((d: any) => d._id.toString()));
 
           if (requireIndexedStrict) {
-            // Strictly require document record to exist and have status === "indexed"
             candidateChunks = candidateChunks.filter((c) => indexedIdSet.has(c.documentId));
           } else {
-            // In development/test mode, exclude unindexed documents (pending, processing, failed, needs_ocr)
             const unindexedDocs = await DocumentModel.find({
               _id: { $in: candidateOids },
               status: { $in: ["pending", "processing", "failed", "needs_ocr"] },
@@ -357,7 +357,6 @@ export class VectorService {
       } catch (err) {
         console.warn("[VectorService] Document status verification failed:", err);
         if (requireIndexedStrict) {
-          // Fail closed: never return uncertain chunks if database status verification fails
           return [];
         }
       }
@@ -367,12 +366,11 @@ export class VectorService {
       return [];
     }
 
-    // Filter by allowed document IDs if not already applied
     if (filterDocIds && filterDocIds.length > 0) {
       candidateChunks = candidateChunks.filter((c) => filterDocIds.includes(c.documentId));
     }
 
-    // Compute hybrid score: Combines Cosine Vector Similarity with Technical Keyword Overlap
+    // Compute hybrid score
     const stopwords = new Set(["what", "the", "for", "and", "are", "with", "how", "does", "from", "into"]);
     const cleanTokens = queryKeywords
       .toLowerCase()
@@ -380,8 +378,6 @@ export class VectorService {
       .split(/\s+/)
       .filter((w) => w.length > 2 && !stopwords.has(w));
 
-    // Precompile word-boundary regular expressions to prevent substring false-positives
-    // (e.g. "ratio" matching inside words like "vibration", "operations", or "calibration")
     const tokenRegexes = cleanTokens.map((kw) => {
       const escaped = kw.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
       return new RegExp(`\\b${escaped}\\b`, "i");
@@ -412,6 +408,8 @@ export class VectorService {
           section: c.section,
           text: c.text,
           figureIds: (c as any).figureIds || [],
+          safetyCategory: c.safetyCategory || "general_procedure",
+          ppeTags: c.ppeTags || [],
         },
         score: hybridScore,
       };

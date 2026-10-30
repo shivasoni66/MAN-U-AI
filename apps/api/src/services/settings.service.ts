@@ -112,6 +112,9 @@ export class SettingsService {
     }
 
     if (!isConnectedToMongo) {
+      if (env.NODE_ENV !== "production" || process.env.ALLOW_OFFLINE_AUTH === "true") {
+        return { ...DEFAULT_SETTINGS };
+      }
       throw new Error("Database disconnected. Cannot retrieve persistent facility settings.");
     }
 

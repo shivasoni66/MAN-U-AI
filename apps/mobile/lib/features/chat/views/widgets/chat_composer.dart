@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_typography.dart';
+import '../../../../core/theme/widgets/terminal_components.dart';
 import '../../../equipment/models/equipment_model.dart';
 
+/// Terminal Cobalt Mobile Chat Composer
+/// Inputs: surface-muted (#2C2C2C), 1px border (#333333), focus ring #0057FF.
 class ChatComposer extends StatefulWidget {
   final bool isSending;
   final EquipmentModel? selectedEquipment;
@@ -66,8 +70,8 @@ class _ChatComposerState extends State<ChatComposer> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
       decoration: const BoxDecoration(
-        color: AppColors.canvas,
-        border: Border(top: BorderSide(color: AppColors.hairline)),
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.border, width: 1.0)),
       ),
       child: SafeArea(
         top: false,
@@ -75,46 +79,41 @@ class _ChatComposerState extends State<ChatComposer> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Equipment Context Pill
+            // Active Equipment Context Tag
             if (activeEquipmentName != null && activeEquipmentName.isNotEmpty) ...[
               Container(
                 margin: const EdgeInsets.only(bottom: 8.0),
                 padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 4.0),
                 decoration: BoxDecoration(
-                  color: AppColors.surface2,
-                  borderRadius: BorderRadius.circular(6.0),
-                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
+                  color: AppColors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(4.0),
+                  border: Border.all(color: AppColors.border, width: 1.0),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
-                      Icons.precision_manufacturing_rounded,
-                      size: 13.0,
-                      color: AppColors.primaryHover,
-                    ),
-                    const SizedBox(width: 6.0),
+                    const StatusDot(color: AppColors.accentCategorical2, size: 8.0),
+                    const SizedBox(width: 8.0),
                     ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 220.0),
+                      constraints: const BoxConstraints(maxWidth: 240.0),
                       child: Text(
-                        activeEquipmentName,
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.ink,
+                        activeEquipmentName.toUpperCase(),
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.onSurface,
+                          fontWeight: FontWeight.w700,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     if (widget.boundEquipmentName == null && widget.onClearEquipment != null) ...[
-                      const SizedBox(width: 4.0),
+                      const SizedBox(width: 6.0),
                       InkWell(
                         onTap: widget.onClearEquipment,
                         child: const Icon(
                           Icons.close_rounded,
-                          size: 14.0,
-                          color: AppColors.inkSubtle,
+                          size: 13.0,
+                          color: AppColors.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -123,46 +122,40 @@ class _ChatComposerState extends State<ChatComposer> {
               ),
             ],
 
-            // Input Row
+            // Input Bar Row
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 if (widget.boundEquipmentName == null && widget.onPickEquipment != null) ...[
-                  IconButton(
+                  ButtonIconTile(
                     key: const Key('pick_equipment_button'),
-                    icon: Icon(
-                      Icons.tune_rounded,
-                      color: widget.selectedEquipment != null
-                          ? AppColors.primary
-                          : AppColors.inkSubtle,
-                      size: 20.0,
-                    ),
+                    icon: Icons.precision_manufacturing_rounded,
                     tooltip: 'Set equipment context',
+                    size: 44.0,
+                    iconColor: widget.selectedEquipment != null
+                        ? AppColors.primary
+                        : AppColors.onSurfaceVariant,
                     onPressed: widget.isSending ? null : widget.onPickEquipment,
-                    visualDensity: VisualDensity.compact,
                   ),
-                  const SizedBox(width: 4.0),
+                  const SizedBox(width: 8.0),
                 ],
                 if (widget.onUploadDocument != null) ...[
-                  IconButton(
+                  ButtonIconTile(
                     key: const Key('attach_document_button'),
-                    icon: const Icon(
-                      Icons.attach_file_rounded,
-                      color: AppColors.inkSubtle,
-                      size: 20.0,
-                    ),
-                    tooltip: 'Ingest technical document (PDF)',
+                    icon: Icons.attach_file_rounded,
+                    tooltip: 'Upload technical document (PDF)',
+                    size: 44.0,
+                    iconColor: AppColors.onSurfaceVariant,
                     onPressed: widget.isSending ? null : widget.onUploadDocument,
-                    visualDensity: VisualDensity.compact,
                   ),
-                  const SizedBox(width: 4.0),
+                  const SizedBox(width: 8.0),
                 ],
                 Expanded(
                   child: Container(
                     decoration: BoxDecoration(
-                      color: AppColors.surface1,
-                      borderRadius: BorderRadius.circular(10.0),
-                      border: Border.all(color: AppColors.hairlineStrong),
+                      color: AppColors.surfaceMuted,
+                      borderRadius: BorderRadius.circular(8.0), // rounded.lg
+                      border: Border.all(color: AppColors.border, width: 1.0),
                     ),
                     child: TextField(
                       key: const Key('chat_message_input'),
@@ -172,18 +165,17 @@ class _ChatComposerState extends State<ChatComposer> {
                       textInputAction: TextInputAction.send,
                       onSubmitted: (_) => _handleSend(),
                       enabled: !widget.isSending,
-                      style: const TextStyle(
-                        color: AppColors.ink,
-                        fontSize: 14.0,
-                        height: 1.4,
+                      style: AppTypography.bodyMd.copyWith(
+                        fontWeight: FontWeight.w400,
+                        color: Colors.white,
                       ),
-                      decoration: const InputDecoration(
-                        hintText: 'Ask technical question, SOP, or symptom...',
-                        hintStyle: TextStyle(
-                          color: AppColors.inkSubtle,
-                          fontSize: 13.5,
+                      decoration: InputDecoration(
+                        hintText: 'QUERY EQUIPMENT SOP OR FAULT CODE...',
+                        hintStyle: AppTypography.labelUppercase.copyWith(
+                          color: AppColors.onSurfaceVariant,
+                          fontSize: 11.5,
                         ),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
                         focusedBorder: InputBorder.none,
@@ -192,41 +184,58 @@ class _ChatComposerState extends State<ChatComposer> {
                   ),
                 ),
                 const SizedBox(width: 8.0),
+
+                // Cobalt Primary Machined Send Button
                 Container(
                   width: 44.0,
                   height: 44.0,
                   decoration: BoxDecoration(
                     color: _canSend && !widget.isSending
                         ? AppColors.primary
-                        : AppColors.surface2,
-                    borderRadius: BorderRadius.circular(10.0),
+                        : AppColors.surfaceAlt,
+                    borderRadius: BorderRadius.circular(8.0), // rounded.lg
                     border: Border.all(
                       color: _canSend && !widget.isSending
-                          ? AppColors.primaryHover
-                          : AppColors.hairline,
+                          ? const Color(0x800057FF)
+                          : AppColors.border,
+                      width: 1.0,
+                    ),
+                    boxShadow: _canSend && !widget.isSending
+                        ? const [
+                            BoxShadow(
+                              color: Color(0x4D0057FF),
+                              blurRadius: 15.0,
+                              spreadRadius: 1.0,
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      key: const Key('chat_send_button'),
+                      borderRadius: BorderRadius.circular(8.0),
+                      onTap: _canSend && !widget.isSending ? _handleSend : null,
+                      child: Center(
+                        child: widget.isSending
+                            ? const SizedBox(
+                                width: 18.0,
+                                height: 18.0,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.0,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            : Icon(
+                                Icons.arrow_upward_rounded,
+                                size: 20.0,
+                                color: _canSend && !widget.isSending
+                                    ? Colors.white
+                                    : AppColors.onSurfaceVariant,
+                              ),
+                      ),
                     ),
                   ),
-                  child: widget.isSending
-                      ? const Center(
-                          child: SizedBox(
-                            width: 18.0,
-                            height: 18.0,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.0,
-                              valueColor: AlwaysStoppedAnimation<Color>(AppColors.ink),
-                            ),
-                          ),
-                        )
-                      : IconButton(
-                          key: const Key('chat_send_button'),
-                          icon: Icon(
-                            Icons.arrow_upward_rounded,
-                            size: 20.0,
-                            color: _canSend ? AppColors.ink : AppColors.inkSubtle,
-                          ),
-                          onPressed: _canSend && !widget.isSending ? _handleSend : null,
-                          padding: EdgeInsets.zero,
-                        ),
                 ),
               ],
             ),

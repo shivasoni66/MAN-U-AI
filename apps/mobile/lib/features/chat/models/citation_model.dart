@@ -7,6 +7,9 @@ class CitationModel {
   final String? section;
   final String excerpt;
   final List<String> figures;
+  final String? safetyCategory;
+  final bool? isOverdue;
+  final String? reviewDate;
 
   const CitationModel({
     this.id,
@@ -17,6 +20,9 @@ class CitationModel {
     this.section,
     required this.excerpt,
     this.figures = const [],
+    this.safetyCategory,
+    this.isOverdue,
+    this.reviewDate,
   });
 
   factory CitationModel.fromJson(Map<String, dynamic> json) {
@@ -44,6 +50,9 @@ class CitationModel {
       section: json['section']?.toString(),
       excerpt: json['excerpt']?.toString() ?? '',
       figures: parsedFigures,
+      safetyCategory: json['safetyCategory']?.toString(),
+      isOverdue: json['isOverdue'] as bool?,
+      reviewDate: json['reviewDate']?.toString(),
     );
   }
 
@@ -57,6 +66,9 @@ class CitationModel {
       if (section != null) 'section': section,
       'excerpt': excerpt,
       'figures': figures,
+      if (safetyCategory != null) 'safetyCategory': safetyCategory,
+      if (isOverdue != null) 'isOverdue': isOverdue,
+      if (reviewDate != null) 'reviewDate': reviewDate,
     };
   }
 }

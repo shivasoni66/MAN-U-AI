@@ -1,11 +1,14 @@
 import pdfParse from "pdf-parse";
 import { geminiService } from "./gemini.service";
+import type { SafetyCategory } from "@man-u-ai/shared";
 
 export interface ExtractedPageChunk {
   page: number;
   section?: string;
   text: string;
   tokenCount: number;
+  safetyCategory?: SafetyCategory;
+  ppeTags?: string[];
 }
 
 export type PdfExtractionOutcome =
@@ -38,6 +41,39 @@ export function isValidPdfSignature(buffer: Buffer): boolean {
   return buffer.subarray(0, 5).toString("ascii") === "%PDF-";
 }
 
+/**
+ * Classifies chunk text into safety categories and extracts required PPE tags.
+ */
+export function classifyChunkSafety(text: string): {
+  safetyCategory: SafetyCategory;
+  ppeTags: string[];
+} {
+  const lower = text.toLowerCase();
+  const ppeTags: string[] = [];
+
+  if (/safety glasses|eye protection|goggles/i.test(lower)) ppeTags.push("safety_glasses");
+  if (/dielectric|insulat.*glove/i.test(lower)) ppeTags.push("dielectric_gloves");
+  if (/leather glove|work glove|hand protection/i.test(lower)) ppeTags.push("leather_gloves");
+  if (/nitrile|chemical glove|rubber glove/i.test(lower)) ppeTags.push("chemical_gloves");
+  if (/respirator|dust mask|breathing apparatus/i.test(lower)) ppeTags.push("respirator");
+  if (/earplug|ear plug|hearing protection|ear muff/i.test(lower)) ppeTags.push("hearing_protection");
+  if (/face shield|arc shield|splash shield/i.test(lower)) ppeTags.push("face_shield");
+  if (/hard hat|helmet/i.test(lower)) ppeTags.push("hard_hat");
+  if (/steel toe|safety boot|safety shoe/i.test(lower)) ppeTags.push("steel_toe_boots");
+
+  let safetyCategory: SafetyCategory = "general_procedure";
+
+  if (/loto|lockout|tagout|de-energiz|bleed pressure|zero energy|isolation procedure|lock out|tag out/i.test(lower)) {
+    safetyCategory = "loto_isolation";
+  } else if (/\b(danger|warning|hazard|caution)\b/i.test(lower)) {
+    safetyCategory = "hazard_warning";
+  } else if (ppeTags.length > 0 || /\b(ppe|protective equipment)\b/i.test(lower)) {
+    safetyCategory = "ppe_required";
+  }
+
+  return { safetyCategory, ppeTags };
+}
+
 export class PdfService {
   /**
    * Safely extracts text with full outcome semantics, returning outcome="extraction_failed"
@@ -66,113 +102,113 @@ export class PdfService {
         throw new Error("Malformed PDF file: file size is too small to contain a valid document structure.");
       }
 
-    const uint8 = new Uint8Array(pdfBuffer.buffer, pdfBuffer.byteOffset, pdfBuffer.byteLength);
-    const options = {
-      pagerender: async (pageData: any) => {
-        const textContent = await pageData.getTextContent();
-        let lastY: any, text = "";
-        for (const item of textContent.items) {
-          if (lastY === item.transform[4] || !lastY) {
-            text += item.str;
-          } else {
-            text += "\n" + item.str;
+      const uint8 = new Uint8Array(pdfBuffer.buffer, pdfBuffer.byteOffset, pdfBuffer.byteLength);
+      const options = {
+        pagerender: async (pageData: any) => {
+          const textContent = await pageData.getTextContent();
+          let lastY: any, text = "";
+          for (const item of textContent.items) {
+            if (lastY === item.transform[4] || !lastY) {
+              text += item.str;
+            } else {
+              text += "\n" + item.str;
+            }
+            lastY = item.transform[4];
           }
-          lastY = item.transform[4];
-        }
-        return `\n\n--- PAGE ${pageData.pageIndex + 1} ---\n\n` + text;
-      },
-    };
-
-    let data: any;
-    try {
-      const parsePromise = pdfParse(uint8 as unknown as Buffer, options);
-      let timeoutId: NodeJS.Timeout;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          reject(new Error(`PDF structure parsing timed out after ${PDF_PROCESSING_LIMITS.EXTRACTION_TIMEOUT_MS}ms`));
-        }, PDF_PROCESSING_LIMITS.EXTRACTION_TIMEOUT_MS);
-      });
-      data = await Promise.race([parsePromise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
-    } catch (parseErr: unknown) {
-      throw new Error(`Failed to parse PDF document structure: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`);
-    }
-
-    const pageCount = data.numpages || 1;
-    if (pageCount > PDF_PROCESSING_LIMITS.MAX_PAGE_COUNT) {
-      throw new Error(`PDF page count (${pageCount}) exceeds defensible limit of ${PDF_PROCESSING_LIMITS.MAX_PAGE_COUNT} pages.`);
-    }
-
-    let totalText = data.text || "";
-
-    // Low text detection: if average text per page is < 30 characters, likely a scanned image requiring OCR
-    const avgCharsPerPage = totalText.length / Math.max(1, pageCount);
-    const isLowText = avgCharsPerPage < 30 || totalText.trim().length < 30;
-
-    // If scanned/low-text PDF, execute OCR extraction and inspect whether genuine text is produced
-    if (isLowText) {
-      console.log(`[PdfService] Scanned or low-text PDF detected for "${docTitle}" (${avgCharsPerPage.toFixed(1)} chars/page). Executing OCR...`);
-      let ocrText: string | null = null;
-      let ocrAttempted = false;
-      let ocrError: string | undefined;
-
-      if (geminiService.isLiveClientConfigured()) {
-        try {
-          ocrAttempted = true;
-          ocrText = await geminiService.transcribePdfWithOcr(pdfBuffer);
-        } catch (err: unknown) {
-          ocrError = err instanceof Error ? err.message : String(err);
-          console.warn(`[PdfService] OCR transcription failed for "${docTitle}":`, ocrError);
-        }
-      } else {
-        ocrError = "OCR multimodal client is not configured in this environment.";
-      }
-
-      // Inspect whether OCR returned genuine, non-empty extracted text
-      const isGenuineText = Boolean(ocrText && ocrText.trim().length >= 30);
-      if (isGenuineText && ocrText) {
-        const chunks = this.chunkTextByPageAndSection(ocrText, pageCount);
-        if (chunks.length > 0) {
-          return {
-            outcome: "ocr_success",
-            pageCount,
-            totalText: ocrText,
-            chunks,
-            requiresOcr: false, // OCR successfully completed, so OCR is no longer required
-            ocrPerformed: true,
-          };
-        }
-      }
-
-      // OCR was required but unavailable, failed, or returned unreadable text
-      return {
-        outcome: "ocr_required_unresolved",
-        pageCount,
-        totalText: "",
-        chunks: [],
-        requiresOcr: true, // OCR is still required
-        ocrPerformed: ocrAttempted,
-        ocrError: ocrError || "OCR returned empty or unreadable text content.",
+          return `\n\n--- PAGE ${pageData.pageIndex + 1} ---\n\n` + text;
+        },
       };
-    }
 
-    if (totalText.trim().length === 0) {
-      throw new Error("Document contains no extractable or readable text content.");
-    }
+      let data: any;
+      try {
+        const parsePromise = pdfParse(uint8 as unknown as Buffer, options);
+        let timeoutId: NodeJS.Timeout;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(new Error(`PDF structure parsing timed out after ${PDF_PROCESSING_LIMITS.EXTRACTION_TIMEOUT_MS}ms`));
+          }, PDF_PROCESSING_LIMITS.EXTRACTION_TIMEOUT_MS);
+        });
+        data = await Promise.race([parsePromise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
+      } catch (parseErr: unknown) {
+        throw new Error(`Failed to parse PDF document structure: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`);
+      }
 
-    const chunks = this.chunkTextByPageAndSection(totalText, pageCount);
+      const pageCount = data.numpages || 1;
+      if (pageCount > PDF_PROCESSING_LIMITS.MAX_PAGE_COUNT) {
+        throw new Error(`PDF page count (${pageCount}) exceeds defensible limit of ${PDF_PROCESSING_LIMITS.MAX_PAGE_COUNT} pages.`);
+      }
 
-    if (chunks.length === 0) {
-      throw new Error("Document text extraction yielded zero valid structural chunks.");
-    }
+      let totalText = data.text || "";
 
-    return {
-      outcome: "digital_text_extracted",
-      pageCount,
-      totalText,
-      chunks,
-      requiresOcr: false,
-      ocrPerformed: false,
-    };
+      // Low text detection: if average text per page is < 30 characters, likely a scanned image requiring OCR
+      const avgCharsPerPage = totalText.length / Math.max(1, pageCount);
+      const isLowText = avgCharsPerPage < 30 || totalText.trim().length < 30;
+
+      // If scanned/low-text PDF, execute OCR extraction and inspect whether genuine text is produced
+      if (isLowText) {
+        console.log(`[PdfService] Scanned or low-text PDF detected for "${docTitle}" (${avgCharsPerPage.toFixed(1)} chars/page). Executing OCR...`);
+        let ocrText: string | null = null;
+        let ocrAttempted = false;
+        let ocrError: string | undefined;
+
+        if (geminiService.isLiveClientConfigured()) {
+          try {
+            ocrAttempted = true;
+            ocrText = await geminiService.transcribePdfWithOcr(pdfBuffer);
+          } catch (err: unknown) {
+            ocrError = err instanceof Error ? err.message : String(err);
+            console.warn(`[PdfService] OCR transcription failed for "${docTitle}":`, ocrError);
+          }
+        } else {
+          ocrError = "OCR multimodal client is not configured in this environment.";
+        }
+
+        // Inspect whether OCR returned genuine, non-empty extracted text
+        const isGenuineText = Boolean(ocrText && ocrText.trim().length >= 30);
+        if (isGenuineText && ocrText) {
+          const chunks = this.chunkTextByPageAndSection(ocrText, pageCount);
+          if (chunks.length > 0) {
+            return {
+              outcome: "ocr_success",
+              pageCount,
+              totalText: ocrText,
+              chunks,
+              requiresOcr: false,
+              ocrPerformed: true,
+            };
+          }
+        }
+
+        // OCR was required but unavailable, failed, or returned unreadable text
+        return {
+          outcome: "ocr_required_unresolved",
+          pageCount,
+          totalText: "",
+          chunks: [],
+          requiresOcr: true,
+          ocrPerformed: ocrAttempted,
+          ocrError: ocrError || "OCR returned empty or unreadable text content.",
+        };
+      }
+
+      if (totalText.trim().length === 0) {
+        throw new Error("Document contains no extractable or readable text content.");
+      }
+
+      const chunks = this.chunkTextByPageAndSection(totalText, pageCount);
+
+      if (chunks.length === 0) {
+        throw new Error("Document text extraction yielded zero valid structural chunks.");
+      }
+
+      return {
+        outcome: "digital_text_extracted",
+        pageCount,
+        totalText,
+        chunks,
+        requiresOcr: false,
+        ocrPerformed: false,
+      };
     } catch (err: unknown) {
       if (!shouldThrow) {
         return {
@@ -190,7 +226,7 @@ export class PdfService {
   }
 
   /**
-   * Partitions extracted text into page-aligned chunks preserving 1-indexed page references.
+   * Partitions extracted text into page-aligned chunks preserving 1-indexed page references and safety tagging.
    */
   private chunkTextByPageAndSection(totalText: string, pageCount: number): ExtractedPageChunk[] {
     const chunks: ExtractedPageChunk[] = [];
@@ -198,21 +234,31 @@ export class PdfService {
     const paragraphs = totalText.split(/\n\s*\n/);
     let currentChunkText = "";
 
+    const emitChunk = (text: string, page: number, section?: string) => {
+      const clean = text.trim();
+      if (!clean) return;
+      const { safetyCategory, ppeTags } = classifyChunkSafety(clean);
+      chunks.push({
+        page: Math.min(page, pageCount),
+        section: section || `Section on Page ${page}`,
+        text: clean,
+        tokenCount: Math.ceil(clean.length / 4),
+        safetyCategory,
+        ppeTags,
+      });
+    };
+
     for (const para of paragraphs) {
       let trimmed = para.trim();
       if (!trimmed) continue;
 
       // Detect page markers (e.g. "--- PAGE 2 ---" or "Page 2")
-      const pageMarkerMatch = trimmed.match(/^--- PAGE (\d+) ---\s*(.*)$/is) || trimmed.match(/^(?:PAGE|Page)\s+(\d+)\s*(.*)$/is);
+      const pageMarkerMatch =
+        trimmed.match(/^--- PAGE (\d+) ---\s*(.*)$/is) || trimmed.match(/^(?:PAGE|Page)\s+(\d+)\s*(.*)$/is);
       if (pageMarkerMatch && parseInt(pageMarkerMatch[1])) {
         const newPage = parseInt(pageMarkerMatch[1]);
         if (newPage !== currentPage && currentChunkText.trim()) {
-          chunks.push({
-            page: Math.min(currentPage, pageCount),
-            section: `Section on Page ${currentPage}`,
-            text: currentChunkText.trim(),
-            tokenCount: Math.ceil(currentChunkText.length / 4),
-          });
+          emitChunk(currentChunkText, currentPage);
           currentChunkText = "";
         }
         currentPage = newPage;
@@ -232,12 +278,7 @@ export class PdfService {
 
       if (currentChunkText.length + trimmed.length > 800) {
         if (currentChunkText.trim()) {
-          chunks.push({
-            page: Math.min(currentPage, pageCount),
-            section: sectionHeader || `Section on Page ${currentPage}`,
-            text: currentChunkText.trim(),
-            tokenCount: Math.ceil(currentChunkText.length / 4),
-          });
+          emitChunk(currentChunkText, currentPage, sectionHeader);
         }
         currentChunkText = trimmed;
       } else {
@@ -246,12 +287,7 @@ export class PdfService {
     }
 
     if (currentChunkText.trim()) {
-      chunks.push({
-        page: Math.min(currentPage, pageCount),
-        section: `Section on Page ${currentPage}`,
-        text: currentChunkText.trim(),
-        tokenCount: Math.ceil(currentChunkText.length / 4),
-      });
+      emitChunk(currentChunkText, currentPage);
     }
 
     return chunks;

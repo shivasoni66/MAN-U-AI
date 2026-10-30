@@ -121,6 +121,9 @@ chatRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res: Respons
           role: "assistant",
           content: result.answer,
           citations: result.citations,
+          warningLevel: result.warningLevel,
+          safetyPreconditions: result.safetyPreconditions,
+          expandedTerms: result.expandedTerms,
         });
         await Conversation.findByIdAndUpdate(conversationId, {
           lastMessageAt: new Date(),
@@ -138,6 +141,9 @@ chatRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res: Respons
         warningLevel: result.warningLevel,
         confidenceScore: result.confidenceScore,
         provider: result.provider,
+        safetyPreconditions: result.safetyPreconditions,
+        suggestedTicket: result.suggestedTicket,
+        expandedTerms: result.expandedTerms,
       },
     });
   } catch (err: unknown) {

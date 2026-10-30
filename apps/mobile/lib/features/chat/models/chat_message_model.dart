@@ -1,4 +1,5 @@
 import 'citation_model.dart';
+import 'safety_preconditions_model.dart';
 
 class ChatMessageModel {
   final String? id;
@@ -10,6 +11,10 @@ class ChatMessageModel {
   final String? warningLevel;
   final double? confidenceScore;
   final String? provider;
+  final SafetyPreconditionsModel? safetyPreconditions;
+  final SuggestedTicketModel? suggestedTicket;
+  final List<String> expandedTerms;
+  final bool isOfflineFallback;
 
   const ChatMessageModel({
     this.id,
@@ -21,6 +26,10 @@ class ChatMessageModel {
     this.warningLevel,
     this.confidenceScore,
     this.provider,
+    this.safetyPreconditions,
+    this.suggestedTicket,
+    this.expandedTerms = const [],
+    this.isOfflineFallback = false,
   });
 
   bool get isUser => role == 'user';
@@ -43,6 +52,25 @@ class ChatMessageModel {
       parsedDate = DateTime.tryParse(json['createdAt'] as String);
     }
 
+    SafetyPreconditionsModel? safety;
+    if (json['safetyPreconditions'] is Map) {
+      safety = SafetyPreconditionsModel.fromJson(
+        Map<String, dynamic>.from(json['safetyPreconditions'] as Map),
+      );
+    }
+
+    SuggestedTicketModel? ticket;
+    if (json['suggestedTicket'] is Map) {
+      ticket = SuggestedTicketModel.fromJson(
+        Map<String, dynamic>.from(json['suggestedTicket'] as Map),
+      );
+    }
+
+    List<String> terms = [];
+    if (json['expandedTerms'] is List) {
+      terms = (json['expandedTerms'] as List).map((e) => e.toString()).toList();
+    }
+
     return ChatMessageModel(
       id: json['id']?.toString() ?? json['_id']?.toString(),
       conversationId: json['conversationId']?.toString(),
@@ -55,6 +83,10 @@ class ChatMessageModel {
           ? (json['confidenceScore'] as num).toDouble()
           : null,
       provider: json['provider'] as String?,
+      safetyPreconditions: safety,
+      suggestedTicket: ticket,
+      expandedTerms: terms,
+      isOfflineFallback: json['isOfflineFallback'] == true,
     );
   }
 
@@ -69,6 +101,10 @@ class ChatMessageModel {
       if (warningLevel != null) 'warningLevel': warningLevel,
       if (confidenceScore != null) 'confidenceScore': confidenceScore,
       if (provider != null) 'provider': provider,
+      if (safetyPreconditions != null) 'safetyPreconditions': safetyPreconditions!.toJson(),
+      if (suggestedTicket != null) 'suggestedTicket': suggestedTicket!.toJson(),
+      'expandedTerms': expandedTerms,
+      'isOfflineFallback': isOfflineFallback,
     };
   }
 }

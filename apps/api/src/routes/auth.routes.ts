@@ -137,6 +137,63 @@ authRouter.post("/login", authLimiter, async (req: Request, res: Response) => {
   const { email, password } = parsed.data;
 
   if (!isConnectedToMongo) {
+    const isOfflineAuthPermitted =
+      process.env.NODE_ENV !== "production" &&
+      process.env.ALLOW_OFFLINE_AUTH === "true";
+
+    if (isOfflineAuthPermitted) {
+      const demoAccounts = [
+        {
+          id: "demo-admin-id",
+          name: "Elena Rostova (Admin)",
+          email: "admin@plant.io",
+          password: "AdminPassword123!",
+          role: "admin" as UserRole,
+        },
+        {
+          id: "demo-engineer-id",
+          name: "Alex Mercer (Engineer)",
+          email: "alex.mercer@plant.io",
+          password: "EngineerPassword123!",
+          role: "engineer" as UserRole,
+        },
+        {
+          id: "demo-operator-id",
+          name: "Sam Taylor (Operator)",
+          email: "operator@plant.io",
+          password: "OperatorPassword123!",
+          role: "viewer" as UserRole,
+        },
+      ];
+
+      const found = demoAccounts.find((a) => a.email.toLowerCase() === email.trim().toLowerCase());
+      if (found && found.password === password) {
+        const token = jwt.sign(
+          { id: found.id, email: found.email, name: found.name, role: found.role },
+          env.JWT_SECRET,
+          { expiresIn: env.JWT_EXPIRES_IN as any }
+        );
+        return res.json({
+          success: true,
+          data: {
+            token,
+            user: {
+              id: found.id,
+              name: found.name,
+              email: found.email,
+              role: found.role,
+              createdAt: new Date().toISOString(),
+            },
+          },
+        });
+      }
+
+      return res.status(401).json({
+        success: false,
+        error: { code: "INVALID_CREDENTIALS", message: "Invalid email or password" },
+      });
+    }
+
     return res.status(503).json({
       success: false,
       error: { code: "SERVICE_UNAVAILABLE", message: "Database connection unavailable for authentication" },
@@ -216,8 +273,15 @@ authRouter.post("/login", authLimiter, async (req: Request, res: Response) => {
 });
 
 authRouter.get("/me", requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  const user = req.user;
   return res.json({
     success: true,
-    data: req.user,
+    data: {
+      id: user?.id,
+      email: user?.email,
+      name: user?.name,
+      role: user?.role,
+      user,
+    },
   });
 });

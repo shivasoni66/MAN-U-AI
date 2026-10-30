@@ -260,6 +260,12 @@ class _TestChatController extends Notifier<ChatState> implements ChatController 
   }
 
   @override
+  void toggleOfflineMode() { state = state.copyWith(isOfflineMode: !state.isOfflineMode); }
+
+  @override
+  Future<bool> downloadAreaPack(String equipmentId) async => true;
+
+  @override
   void clearSendingError() {
     state = state.copyWith(sendingError: () => null);
   }

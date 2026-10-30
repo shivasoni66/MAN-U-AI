@@ -5,7 +5,7 @@ import { AuditEvent } from "../models";
 
 import { isConnectedToMongo } from "../config/database";
 import { env } from "../config/env";
-import type { CitationDTO } from "@man-u-ai/shared";
+import type { CitationDTO, SafetyPreconditionsDTO } from "@man-u-ai/shared";
 
 /**
  * Detects whether buffer corresponds to a supported image format (JPEG, PNG, WebP)
@@ -59,32 +59,34 @@ export function detectSupportedImageMimeType(buffer: Buffer, declaredMime?: stri
  * Reads a readable stream incrementally into a Buffer, enforcing a strict maximum size limit (default 5 MB).
  * Destroys the stream immediately if limit is exceeded to free underlying file/socket handles.
  */
-export async function streamToBuffer(stream: NodeJS.ReadableStream, maxBytes = 5 * 1024 * 1024): Promise<Buffer> {
+export function streamToBuffer(stream: NodeJS.ReadableStream, maxBytes = 5 * 1024 * 1024): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let totalBytes = 0;
-  try {
-    for await (const chunk of stream) {
-      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      totalBytes += buf.length;
-      if (totalBytes > maxBytes) {
-        if (typeof (stream as any).destroy === "function") {
-          (stream as any).destroy();
+  return new Promise(async (resolve, reject) => {
+    try {
+      for await (const chunk of stream) {
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        totalBytes += buf.length;
+        if (totalBytes > maxBytes) {
+          if (typeof (stream as any).destroy === "function") {
+            (stream as any).destroy();
+          }
+          return reject(new Error(`Figure file exceeded maximum buffer size limit of ${maxBytes} bytes`));
         }
-        throw new Error(`Figure file exceeded maximum buffer size limit of ${maxBytes} bytes`);
+        chunks.push(buf);
       }
-      chunks.push(buf);
-    }
-  } catch (err) {
-    if (typeof (stream as any).destroy === "function" && !(stream as any).destroyed) {
-      try {
-        (stream as any).destroy();
-      } catch {
-        // ignore destroy errors
+      resolve(Buffer.concat(chunks));
+    } catch (err) {
+      if (typeof (stream as any).destroy === "function" && !(stream as any).destroyed) {
+        try {
+          (stream as any).destroy();
+        } catch {
+          // ignore destroy errors
+        }
       }
+      reject(err);
     }
-    throw err;
-  }
-  return Buffer.concat(chunks);
+  });
 }
 
 export interface RagResponse {
@@ -93,11 +95,19 @@ export interface RagResponse {
   warningLevel: "none" | "caution" | "critical";
   confidenceScore: number;
   provider?: "live-gemini" | "deterministic-fallback";
+  safetyPreconditions?: SafetyPreconditionsDTO;
+  suggestedTicket?: {
+    query: string;
+    equipmentId?: string;
+    reason: string;
+  };
+  expandedTerms?: string[];
 }
 
 export class RagService {
   /**
-   * Main RAG execution pipeline with document-level authorization and structured stage logging.
+   * Main RAG execution pipeline with document-level authorization, glossary expansion,
+   * safety precondition extraction, and refusal-to-fix tracking.
    */
   async answerQuestion(
     query: string,
@@ -218,14 +228,17 @@ export class RagService {
       }
     }
 
-    // 3. Stage: Query Augmentation & Embedding Generation
-    let searchQuery = query;
+    // 3. Stage: Plant Glossary Query Expansion
+    const { glossaryService } = await import("./glossary.service");
+    const { expandedQuery, expandedTerms } = await glossaryService.expandQuery(query);
+
+    let searchQuery = expandedQuery;
     if (equipmentContext) {
       const lowerQuery = query.toLowerCase();
       const hasName = lowerQuery.includes(equipmentContext.name.toLowerCase());
       const hasModel = equipmentContext.model && lowerQuery.includes(equipmentContext.model.toLowerCase());
       if (!hasName && !hasModel) {
-        searchQuery = `${equipmentContext.name} ${equipmentContext.model || ""} ${query}`.trim();
+        searchQuery = `${equipmentContext.name} ${equipmentContext.model || ""} ${searchQuery}`.trim();
       }
     }
 
@@ -260,12 +273,14 @@ export class RagService {
       throw retErr;
     }
 
-    // 5. Stage: Insufficient Evidence Check
+    // 5. Stage: Insufficient Evidence Check (Refusal-to-Fix & Suggestion Logging)
     if (retrieved.length === 0) {
-      console.log(`[RAG Pipeline] [Request ID: ${reqId}] [Stage: evidence_evaluation] Retrieval returned 0 chunks; returning grounded insufficient evidence response`);
+      console.log(`[RAG Pipeline] [Request ID: ${reqId}] [Stage: evidence_evaluation] Retrieval returned 0 chunks; recording suggestion and returning refusal-to-fix ticket suggestion`);
+      await glossaryService.recordLowConfidenceQuery(query);
+
       const limitationMessage = equipmentContext
-        ? `I could not locate sufficient verified documentation in your authorized knowledge index for **${equipmentContext.name}**${equipmentContext.model ? ` (${equipmentContext.model})` : ""} regarding your reported symptom or inquiry. Please verify the equipment model and symptom details, or upload the relevant manufacturer technical manual or SOP to proceed safely.`
-        : "I could not locate sufficient verified documentation in your authorized knowledge index to answer this inquiry safely. Please upload the relevant equipment manual or check with a certified plant supervisor.";
+        ? `I could not locate sufficient verified documentation in your authorized knowledge index for **${equipmentContext.name}**${equipmentContext.model ? ` (${equipmentContext.model})` : ""} regarding your reported symptom or inquiry. Please verify the equipment model and symptom details, or tap **Request Documentation** below to notify the document owner.`
+        : "I could not locate sufficient verified documentation in your authorized knowledge index to answer this inquiry safely. Please tap **Request Documentation** below or consult with a certified plant supervisor.";
 
       return {
         answer: limitationMessage,
@@ -273,8 +288,113 @@ export class RagService {
         warningLevel: "none",
         confidenceScore: 0.1,
         provider: geminiService.getLastProvider(),
+        suggestedTicket: {
+          query,
+          equipmentId,
+          reason: "Zero matching chunks found in authorized knowledge index.",
+        },
+        expandedTerms: expandedTerms.length > 0 ? expandedTerms : undefined,
       };
     }
+
+    // 5b. Stage: Secondary Safety Pass (Ensure procedural questions pull safety/LOTO chunks from the primary document)
+    const primaryDocId = retrieved[0]?.chunk.documentId;
+    const hasSafetyChunk = retrieved.some(
+      (r) => r.chunk.safetyCategory && r.chunk.safetyCategory !== "general_procedure"
+    );
+
+    if (!hasSafetyChunk && isConnectedToMongo && mongoose.Types.ObjectId.isValid(primaryDocId)) {
+      try {
+        const { DocumentChunk } = await import("../models");
+        const safetyChunks = await DocumentChunk.find({
+          documentId: new mongoose.Types.ObjectId(primaryDocId),
+          safetyCategory: { $in: ["hazard_warning", "ppe_required", "loto_isolation"] },
+        })
+          .limit(2)
+          .lean();
+
+        for (const sc of safetyChunks) {
+          retrieved.push({
+            chunk: {
+              id: sc._id.toString(),
+              documentId: sc.documentId.toString(),
+              documentTitle: sc.documentTitle,
+              revision: sc.revision,
+              page: sc.page,
+              section: sc.section,
+              text: sc.text,
+              figureIds: (sc as any).figureIds || [],
+              safetyCategory: sc.safetyCategory as any,
+              ppeTags: sc.ppeTags || [],
+            },
+            score: 0.85,
+          });
+        }
+      } catch (scErr) {
+        console.warn("[RAG Pipeline] Secondary safety retrieval warning:", scErr);
+      }
+    }
+
+    // 5c. Inspect Document Review Dates & Expiry Warning
+    let overdueWarning: string | undefined = undefined;
+    const documentMetaMap = new Map<string, { reviewDate?: Date; isOverdue: boolean; title: string }>();
+
+    if (isConnectedToMongo && retrieved.length > 0) {
+      try {
+        const { DocumentModel } = await import("../models");
+        const docOids = Array.from(new Set(retrieved.map((r) => r.chunk.documentId)))
+          .filter((id) => mongoose.Types.ObjectId.isValid(id) && id.length === 24)
+          .map((id) => new mongoose.Types.ObjectId(id));
+
+        if (docOids.length > 0) {
+          const docs = await DocumentModel.find({ _id: { $in: docOids } }).select("_id title reviewDate");
+          for (const d of docs) {
+            const isOverdue = d.reviewDate ? new Date() > d.reviewDate : false;
+            documentMetaMap.set(d._id.toString(), {
+              reviewDate: d.reviewDate,
+              isOverdue,
+              title: d.title,
+            });
+            if (isOverdue && !overdueWarning) {
+              const dateStr = d.reviewDate ? d.reviewDate.toISOString().slice(0, 10) : "unknown date";
+              overdueWarning = `⚠️ **DOCUMENT OVERDUE NOTICE:** Grounded in "${d.title}" which is overdue for annual safety review (Review Due: ${dateStr}). Verify with plant safety supervisor before execution.`;
+            }
+          }
+        }
+      } catch (docErr) {
+        console.warn(`[RAG Pipeline] Could not inspect document review dates:`, docErr);
+      }
+    }
+
+    // 5d. Compile Structured Safety Preconditions
+    const safetyWarnings: string[] = [];
+    const ppeRequired = new Set<string>();
+    const lotoSteps: string[] = [];
+
+    for (const r of retrieved) {
+      if (r.chunk.safetyCategory === "hazard_warning" || /\b(danger|warning|hazard|caution)\b/i.test(r.chunk.text)) {
+        safetyWarnings.push(r.chunk.text.slice(0, 250));
+      }
+      if (
+        r.chunk.safetyCategory === "loto_isolation" ||
+        /loto|lockout|tagout|zero energy|de-energiz|bleed pressure/i.test(r.chunk.text)
+      ) {
+        lotoSteps.push(r.chunk.text.slice(0, 250));
+      }
+      if (r.chunk.ppeTags && r.chunk.ppeTags.length > 0) {
+        r.chunk.ppeTags.forEach((tag) => ppeRequired.add(tag));
+      }
+    }
+
+    const safetyPreconditions: SafetyPreconditionsDTO | undefined =
+      safetyWarnings.length > 0 || ppeRequired.size > 0 || lotoSteps.length > 0 || overdueWarning
+        ? {
+            warnings: Array.from(new Set(safetyWarnings)).slice(0, 4),
+            ppeRequired: Array.from(ppeRequired),
+            lotoSteps: Array.from(new Set(lotoSteps)).slice(0, 4),
+            isOverdueWarning: overdueWarning,
+          }
+        : undefined;
 
     // 6. Determine safety severity level based on query, session history, and retrieved instructions
     const lowerQuery = query.toLowerCase();
@@ -370,7 +490,6 @@ export class RagService {
           let score = 0;
           let matchedChunkId: string | undefined = undefined;
 
-          // Check query keyword overlap with figure title/caption/figureId
           const figText = `${fig.figureId} ${fig.title || ""} ${fig.caption || ""}`.toLowerCase();
           let queryKeywordMatches = 0;
           for (const term of queryTerms) {
@@ -384,7 +503,6 @@ export class RagService {
 
             const isTopChunk = r.chunk.id === retrieved[0]?.chunk.id;
 
-            // Direct chunk association
             if (fig.associatedChunkIds && fig.associatedChunkIds.includes(r.chunk.id)) {
               score += isTopChunk ? 10 : 5;
               matchedChunkId = r.chunk.id;
@@ -394,7 +512,6 @@ export class RagService {
               matchedChunkId = r.chunk.id;
             }
 
-            // Direct textual mention of figureId in chunk text or section
             const escapedFigId = fig.figureId.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
             const figMentionRegex = new RegExp(`\\b${escapedFigId}\\b`, "i");
             if (figMentionRegex.test(r.chunk.text) || (r.chunk.section && figMentionRegex.test(r.chunk.section))) {
@@ -402,7 +519,6 @@ export class RagService {
               matchedChunkId = r.chunk.id;
             }
 
-            // Same page as retrieved chunk
             if (r.chunk.page === fig.page) {
               score += isTopChunk ? 3 : 1;
               if (!matchedChunkId) matchedChunkId = r.chunk.id;
@@ -417,22 +533,19 @@ export class RagService {
             score += 5;
           }
 
-          // Strict relevance filter: must meet minimum relevance threshold and have topical link
           if (score >= 8 && (queryKeywordMatches > 0 || hasVisualIntent || matchedChunkId === retrieved[0]?.chunk.id)) {
             scoredFigures.push({ fig, score, matchedChunkId });
           }
         }
 
-        // Prioritize figures belonging to the primary top-retrieved document, then by relevance score
-        const primaryDocId = retrieved[0]?.chunk.documentId;
+        const primaryDocStr = retrieved[0]?.chunk.documentId;
         scoredFigures.sort((a, b) => {
-          const aIsPrimary = a.fig.documentId.toString() === primaryDocId ? 1 : 0;
-          const bIsPrimary = b.fig.documentId.toString() === primaryDocId ? 1 : 0;
+          const aIsPrimary = a.fig.documentId.toString() === primaryDocStr ? 1 : 0;
+          const bIsPrimary = b.fig.documentId.toString() === primaryDocStr ? 1 : 0;
           if (aIsPrimary !== bIsPrimary) return bIsPrimary - aIsPrimary;
           return b.score - a.score;
         });
 
-        // Populate citations for all genuine scored figures meeting relevance threshold
         for (const item of scoredFigures) {
           const fig = item.fig;
           if (!fig.storagePath) continue;
@@ -472,14 +585,10 @@ export class RagService {
           }
         }
 
-        // Bounded selection: limit to top figures for multimodal AI visual input (prioritizing primary document)
-        // A figure is selected for visual LLM input ONLY IF:
-        // 1. The user explicitly inquired about a diagram/figure/schematic (hasVisualIntent), OR
-        // 2. The primary top-scoring evidence chunk directly references/associates with this figure.
         const selected = scoredFigures
           .filter(
             (s) =>
-              (!primaryDocId || s.fig.documentId.toString() === primaryDocId) &&
+              (!primaryDocStr || s.fig.documentId.toString() === primaryDocStr) &&
               (hasVisualIntent || s.matchedChunkId === retrieved[0]?.chunk.id)
           )
           .slice(0, 2);
@@ -494,9 +603,7 @@ export class RagService {
             const verifiedMime = detectSupportedImageMimeType(imageBuffer, fig.mimeType);
 
             if (!verifiedMime) {
-              console.warn(
-                `[RAG Pipeline] Skipping figure ${fig.figureId}: unsupported or invalid image format.`
-              );
+              console.warn(`[RAG Pipeline] Skipping figure ${fig.figureId}: unsupported or invalid image format.`);
               continue;
             }
 
@@ -507,7 +614,6 @@ export class RagService {
               title: fig.title,
             });
 
-            // Only attach figure to prompt context if the image loaded and validated successfully
             relevantFigures.push(fig);
           } catch (loadErr) {
             console.warn(`[RAG Pipeline] Failed to load image asset for figure ${fig.figureId} (${fig.storagePath}):`, loadErr);
@@ -526,7 +632,7 @@ export class RagService {
     const evidenceBlocks = retrieved
       .map(
         (r, i) =>
-          `[EVIDENCE ${i + 1}] Source: "${r.chunk.documentTitle}" (Rev: ${r.chunk.revision}), Page ${r.chunk.page}, Section: "${r.chunk.section || "General"}"\nContent: "${r.chunk.text}"`
+          `[EVIDENCE ${i + 1}] Source: "${r.chunk.documentTitle}" (Rev: ${r.chunk.revision}), Page ${r.chunk.page}, Section: "${r.chunk.section || "General"}" (Type: ${r.chunk.safetyCategory || "general"})\nContent: "${r.chunk.text}"`
       )
       .join("\n\n");
 
@@ -558,6 +664,16 @@ export class RagService {
         `\n`;
     }
 
+    let safetyDirective = "";
+    if (safetyPreconditions) {
+      safetyDirective = `\nCRITICAL SAFETY PRECONDITIONS DIRECTIVE:
+At the very top of your response (before any diagnostic or maintenance steps), you MUST pin a dedicated section:
+### ⚠️ MANDATORY SAFETY PRECONDITIONS & PPE
+- Surface all Hazard Warnings from the documentation.
+- List all Required PPE (${safetyPreconditions.ppeRequired.join(", ") || "Safety glasses, protective gloves"}).
+- State the Lockout/Tagout (LOTO) energy isolation and de-pressurization requirements before touching the machine.\n`;
+    }
+
     const prompt = `You are MAN-U-AI, an expert Industrial Reliability Engineering AI Copilot assisting technicians with evidence-grounded interactive troubleshooting.
 ${equipmentSection}${historySection}
 RETRIEVED DOCUMENT EVIDENCE:
@@ -565,52 +681,42 @@ ${evidenceBlocks}
 ${figureSection}
 TECHNICIAN'S CURRENT INPUT:
 ${query}
-
+${safetyDirective}
 MANDATORY RULES FOR EVIDENCE-GROUNDED INTERACTIVE TROUBLESHOOTING:
 1. Grounding & Zero Fabrication:
    - Ground all diagnostic instructions, technical parameters, tolerances, torques, and fault codes strictly in the RETRIEVED DOCUMENT EVIDENCE above.
    - NEVER fabricate manual instructions, torque ratings, wire numbers, or diagnostic findings.
    - You may ONLY cite source documents and page numbers that actually exist in the RETRIEVED DOCUMENT EVIDENCE above. Never invent external standards or document citations.
 
-2. Interactive Sequential Guidance (One Step at a Time):
+2. Safety & Interlocks First:
+   - Always put safety warnings, mandatory PPE, and energy isolation requirements at the very beginning of the response.
+   - NEVER allow a user to proceed with maintenance before highlighting de-energization and safety interlocks.
+
+3. Interactive Sequential Guidance (One Step at a Time):
    - Do NOT output an entire multi-step repair procedure at once.
    - Present ONE actionable diagnostic check, inspection, or measurement at a time.
    - State clearly:
      a) What specific action to take.
      b) Exactly what to observe, measure, or listen for (including acceptable vs abnormal criteria).
      c) Prompt the technician to perform this check and report back the observation before choosing the next step.
-   - Wait for the user's result before advancing to subsequent steps.
 
-3. Session Context & Completed Checks:
+4. Session Context & Completed Checks:
    - Carry forward all symptoms, completed checks, and test results from the DIAGNOSTIC SESSION HISTORY above.
    - Do NOT ask the technician to repeat checks they have already completed.
-   - Do NOT mark a step as completed until the user confirms its result.
-
-4. Safety & Interlocks First:
-   - Surface relevant source-backed warnings and Lockout/Tagout (LOTO) energy isolation requirements BEFORE any potentially hazardous procedure.
-   - NEVER instruct users to bypass safety interlocks, defeat guards, bridge limit switches, or operate machinery in an unsafe state.
-   - If the technician mentions or requests bypassing an interlock or safety guard, STRICTLY REFUSE and mandate qualified isolation procedures.
-   - Prioritize safe, non-invasive checks (visual inspection, error code display, surface temperature, vibration listening, pressure gauges) before recommending invasive teardown.
 
 5. Handling Uncertainty & Distinguishing Hypotheses:
-   - Clearly distinguish between confirmed facts (directly documented in the manual) and diagnostic hypotheses.
-   - Label preliminary root causes as "Diagnostic Hypothesis (Unconfirmed — Requires Verification)". Never declare an unverified hypothesis as a confirmed diagnosis.
-   - If retrieval does not provide sufficient evidence to pinpoint the issue or verify a safe procedure:
-     a) Explicitly state the documentation limitation.
-     b) Ask a targeted clarification (e.g. asking for equipment model, nameplate rating, or specific fault code) rather than guessing.
-     c) If documentation is silent on a hazardous repair, abstain from guessing and recommend consulting an authorized OEM specialist.
+   - Clearly distinguish between confirmed facts and diagnostic hypotheses.
+   - If retrieval does not provide sufficient evidence, explicitly state the limitation.
 
 ${relevantFigures.length > 0 ? `6. Multimodal & Figure-Aware Grounding (Strict Rules):
-   - You have been provided with authentic extracted figure images/schematics matching the retrieved manual pages.
    - Ground visual observations ONLY in what is directly legible and visible in the attached figures.
-   - When referencing a figure, always cite its exact Figure ID, Document, and Page number (e.g. "[Figure 1 on Page 16 of SP-400 Manual]").
-   - Distinguish visible observations from interpretations:
-     * Label direct visual readings as "Direct Visual Observation from [Figure ID]".
-     * Label deductions or procedural steps as "Procedural Guidance from Manual Text".
-   - ZERO FABRICATION: NEVER hallucinate, guess, or invent component labels, terminal/pin numbers, wire colors, arrow directions, valve positions, or dimensions that are illegible or not present in the figure.
-   - If an image is unreadable, blurry, or lacks a specific requested detail, explicitly state that the detail is not legible in the figure and rely strictly on the manual text or ask for clarification.` : `6. Figure Mentions in Text (No Figures Attached):
+   - Distinguish each claim as either "Direct Visual Observation from [Figure ID]" or "Procedural Guidance from Manual Text".
+   - ZERO FABRICATION: NEVER hallucinate, guess, or invent component labels, terminal/pin numbers, wire colors, dimensions, warning icons, or unreadable annotations.
+   - If an image is unreadable, blurry, or lacks a specific requested detail, explicitly state that the detail is not legible.
+   - Cite Figure ID, Document, and Page number.` : `6. Figure Mentions in Text (No Figures Attached):
    - No figure or schematic images are attached to this query.
-   - If manual excerpts mention figures or schematics, refer to them strictly as textual manual references. Do NOT claim to have visually examined or observed any figure or diagram.`}
+   - Refer to figures strictly as textual manual references.
+   - Do NOT claim to have visually examined or observed any figure or diagram.`}
 
 Respond in clean, professional GitHub Markdown:`;
 
@@ -683,6 +789,8 @@ ${retrieved.map((r, i) => `[${i + 1}] **${r.chunk.documentTitle}** (Page ${r.chu
         figureCitationMap.get(r.chunk.id) ||
         figureCitationMap.get(pageKey);
 
+      const docMeta = documentMetaMap.get(r.chunk.documentId);
+
       return {
         id: `cite-${r.chunk.id}-${i}`,
         documentId: r.chunk.documentId,
@@ -691,6 +799,9 @@ ${retrieved.map((r, i) => `[${i + 1}] **${r.chunk.documentTitle}** (Page ${r.chu
         page: r.chunk.page,
         section: r.chunk.section,
         excerpt: r.chunk.text.slice(0, 220) + (r.chunk.text.length > 220 ? "..." : ""),
+        safetyCategory: r.chunk.safetyCategory,
+        isOverdue: docMeta?.isOverdue,
+        reviewDate: docMeta?.reviewDate ? docMeta.reviewDate.toISOString().slice(0, 10) : undefined,
         ...(matchingFigures && matchingFigures.length > 0 ? { figures: matchingFigures } : {}),
       };
     });
@@ -708,6 +819,7 @@ ${retrieved.map((r, i) => `[${i + 1}] **${r.chunk.documentTitle}** (Page ${r.chu
             warningLevel,
             citationsCount: citations.length,
             equipmentId: equipmentContext?.id,
+            expandedTerms,
           },
         });
       } catch (err) {
@@ -715,12 +827,28 @@ ${retrieved.map((r, i) => `[${i + 1}] **${r.chunk.documentTitle}** (Page ${r.chu
       }
     }
 
+    const confidenceScore = retrieved[0]?.score || 0.85;
+    const isLowConfidence = confidenceScore < 0.35;
+
+    if (isLowConfidence) {
+      glossaryService.recordLowConfidenceQuery(query);
+    }
+
     return {
       answer,
       citations,
       warningLevel,
-      confidenceScore: retrieved[0]?.score || 0.85,
+      confidenceScore,
       provider: geminiService.getLastProvider(),
+      safetyPreconditions,
+      suggestedTicket: isLowConfidence
+        ? {
+            query,
+            equipmentId,
+            reason: `Low retrieval confidence (${(confidenceScore * 100).toFixed(0)}%). Relevant equipment documentation may be missing.`,
+          }
+        : undefined,
+      expandedTerms: expandedTerms.length > 0 ? expandedTerms : undefined,
     };
   }
 }

@@ -48,6 +48,10 @@ export interface DocumentDTO {
   pageCount?: number;
   processingError?: string;
   uploadedById: string;
+  ownerName?: string;
+  ownerEmail?: string;
+  reviewDate?: string;
+  isOverdue?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -62,6 +66,9 @@ export const UploadDocumentSchema = z.object({
       message: "Invalid equipment ID format: must be a 24-character hexadecimal ObjectId",
     })
     .optional(),
+  ownerName: z.string().trim().max(100).optional(),
+  ownerEmail: z.string().trim().email("Invalid owner email format").max(255).optional().or(z.literal("")),
+  reviewDate: z.string().trim().optional(),
   tags: z.array(z.string().trim().min(1, "Tag cannot be empty").max(100, "Tag too long")).max(50, "Cannot exceed 50 tags").optional().default([]),
 });
 export type UploadDocumentInput = z.infer<typeof UploadDocumentSchema>;
@@ -78,6 +85,21 @@ export interface ProcessingJobDTO {
   error?: string;
   startedAt?: string;
   finishedAt?: string;
+}
+
+// ─── Safety & Preconditions ─────────────────────────────────────────────────
+
+export type SafetyCategory =
+  | "hazard_warning"
+  | "ppe_required"
+  | "loto_isolation"
+  | "general_procedure";
+
+export interface SafetyPreconditionsDTO {
+  warnings: string[];
+  ppeRequired: string[];
+  lotoSteps: string[];
+  isOverdueWarning?: string;
 }
 
 // ─── Conversation & Messages ─────────────────────────────────────────────────
@@ -115,6 +137,9 @@ export interface CitationDTO {
   section?: string;
   excerpt: string;
   figures?: DocumentFigureDTO[];
+  safetyCategory?: SafetyCategory;
+  isOverdue?: boolean;
+  reviewDate?: string;
 }
 
 export interface MessageDTO {
@@ -123,6 +148,14 @@ export interface MessageDTO {
   role: MessageRole;
   content: string;
   citations?: CitationDTO[];
+  warningLevel?: "none" | "caution" | "critical";
+  safetyPreconditions?: SafetyPreconditionsDTO;
+  suggestedTicket?: {
+    query: string;
+    equipmentId?: string;
+    reason: string;
+  };
+  expandedTerms?: string[];
   createdAt: string;
 }
 
@@ -180,6 +213,186 @@ export const FeedbackSchema = z.object({
   comment: z.string().trim().max(1000, "Comment cannot exceed 1000 characters").optional(),
 });
 export type FeedbackInput = z.infer<typeof FeedbackSchema>;
+
+// ─── Plant Glossary & Slang Mapping ──────────────────────────────────────────
+
+export type PlantGlossaryCategory = "slang" | "equipment_tag" | "abbreviation" | "component";
+
+export interface PlantGlossaryDTO {
+  id: string;
+  term: string;
+  canonicalTerm: string;
+  equipmentTag?: string;
+  category: PlantGlossaryCategory;
+  synonyms: string[];
+  plantArea?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export const CreatePlantGlossarySchema = z.object({
+  term: z.string().trim().min(1, "Term cannot be empty").max(100),
+  canonicalTerm: z.string().trim().min(1, "Canonical term cannot be empty").max(150),
+  equipmentTag: z.string().trim().max(50).optional(),
+  category: z.enum(["slang", "equipment_tag", "abbreviation", "component"]).default("slang"),
+  synonyms: z.array(z.string().trim().min(1)).default([]),
+  plantArea: z.string().trim().max(100).optional(),
+  isActive: z.boolean().default(true),
+});
+export type CreatePlantGlossaryInput = z.infer<typeof CreatePlantGlossarySchema>;
+
+export interface GlossarySuggestionDTO {
+  id: string;
+  rawQuery: string;
+  unmatchedTerms: string[];
+  frequency: number;
+  lastSearchedAt: string;
+  status: "pending" | "approved" | "dismissed";
+  suggestedCanonical?: string;
+  createdAt: string;
+}
+
+export const ApproveGlossarySuggestionSchema = z.object({
+  term: z.string().trim().min(1),
+  canonicalTerm: z.string().trim().min(1),
+  category: z.enum(["slang", "equipment_tag", "abbreviation", "component"]).default("slang"),
+  equipmentTag: z.string().trim().optional(),
+  synonyms: z.array(z.string().trim()).default([]),
+});
+export type ApproveGlossarySuggestionInput = z.infer<typeof ApproveGlossarySuggestionSchema>;
+
+// ─── Refusal-to-Fix Documentation Tickets ───────────────────────────────────
+
+export type TicketStatus = "open" | "assigned" | "uploaded" | "closed";
+
+export interface DocRequestTicketDTO {
+  id: string;
+  ticketNumber: string;
+  equipmentId?: string;
+  equipmentName?: string;
+  requestedBy: {
+    id: string;
+    name?: string;
+    email?: string;
+  };
+  userQuery: string;
+  searchContext?: string;
+  closestMatch?: {
+    documentTitle: string;
+    page: number;
+    score: number;
+  };
+  status: TicketStatus;
+  assignedToEmail?: string;
+  resolutionNotes?: string;
+  createdAt: string;
+  resolvedAt?: string;
+}
+
+export const CreateDocRequestTicketSchema = z.object({
+  equipmentId: z.string().trim().optional(),
+  equipmentName: z.string().trim().optional(),
+  userQuery: z.string().trim().min(1, "User query is required").max(1000),
+  searchContext: z.string().trim().max(3000).optional(),
+  closestMatch: z
+    .object({
+      documentTitle: z.string().trim(),
+      page: z.number(),
+      score: z.number(),
+    })
+    .optional(),
+});
+export type CreateDocRequestTicketInput = z.infer<typeof CreateDocRequestTicketSchema>;
+
+export const UpdateDocRequestTicketSchema = z.object({
+  status: z.enum(["open", "assigned", "uploaded", "closed"]).optional(),
+  assignedToEmail: z.string().trim().email().optional().or(z.literal("")),
+  resolutionNotes: z.string().trim().max(2000).optional(),
+});
+export type UpdateDocRequestTicketInput = z.infer<typeof UpdateDocRequestTicketSchema>;
+
+// ─── Tap-the-Part Interactive Diagrams ──────────────────────────────────────
+
+export interface DiagramHotspotDTO {
+  id: string;
+  partNumber: string;
+  partName: string;
+  boundingBox: [number, number, number, number]; // [ymin, xmin, ymax, xmax] normalized 0-1000
+  manualPage?: number;
+  description?: string;
+}
+
+export interface DiagramAnnotationDTO {
+  id: string;
+  figureId: string;
+  documentId: string;
+  documentTitle: string;
+  page: number;
+  title?: string;
+  hotspots: DiagramHotspotDTO[];
+  createdAt: string;
+}
+
+export const CreateDiagramAnnotationSchema = z.object({
+  figureId: z.string().trim().min(1),
+  documentId: z.string().trim().min(1),
+  documentTitle: z.string().trim().min(1),
+  page: z.number().int().min(1),
+  title: z.string().trim().optional(),
+  hotspots: z
+    .array(
+      z.object({
+        id: z.string().trim().min(1),
+        partNumber: z.string().trim().min(1),
+        partName: z.string().trim().min(1),
+        boundingBox: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+        manualPage: z.number().optional(),
+        description: z.string().trim().optional(),
+      })
+    )
+    .default([]),
+});
+export type CreateDiagramAnnotationInput = z.infer<typeof CreateDiagramAnnotationSchema>;
+
+// ─── Offline-Capable Area Pack & Sync ────────────────────────────────────────
+
+export interface AreaPackChunkDTO {
+  id: string;
+  documentId: string;
+  documentTitle: string;
+  page: number;
+  section?: string;
+  text: string;
+  safetyCategory?: SafetyCategory;
+  ppeTags?: string[];
+}
+
+export interface AreaPackDTO {
+  equipmentId: string;
+  equipmentName: string;
+  equipmentType: string;
+  model?: string;
+  generatedAt: string;
+  versionHash: string;
+  documents: DocumentDTO[];
+  chunks: AreaPackChunkDTO[];
+  figures: DocumentFigureDTO[];
+}
+
+export const SyncCheckSchema = z.object({
+  equipmentId: z.string().trim().min(1),
+  currentVersionHash: z.string().trim().optional(),
+  cachedAt: z.string().trim().optional(),
+});
+export type SyncCheckInput = z.infer<typeof SyncCheckSchema>;
+
+export interface SyncCheckResponseDTO {
+  equipmentId: string;
+  isUpToDate: boolean;
+  latestVersionHash: string;
+  latestRevisionDate: string;
+}
 
 // ─── Settings ────────────────────────────────────────────────────────────────
 

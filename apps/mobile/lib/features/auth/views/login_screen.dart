@@ -4,9 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/config/env_config.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_typography.dart';
+import '../../../core/theme/widgets/terminal_components.dart';
 import '../controllers/auth_controller.dart';
 import '../models/auth_state.dart';
 
+/// Terminal Cobalt Mobile Login Screen
+/// Industrial. Instrumented. Operational.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -73,7 +77,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             _passwordController.text,
           );
       if (!success && mounted) {
-        // Clear password on failed attempt for security and UX
         _passwordController.clear();
       }
     } finally {
@@ -100,22 +103,33 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(result.statusMessage),
-          backgroundColor: result.isHealthy ? AppColors.surface3 : AppColors.danger,
+          content: Text(
+            result.statusMessage.toUpperCase(),
+            style: AppTypography.caption.copyWith(color: Colors.white),
+          ),
+          backgroundColor: result.isHealthy ? AppColors.surfaceAlt : AppColors.error,
           duration: const Duration(seconds: 4),
         ),
       );
     }
   }
 
+  void _fillCredentials(String email, String password) {
+    setState(() {
+      _emailController.text = email;
+      _passwordController.text = password;
+    });
+  }
+
   void _showServerConfigModal(BuildContext context) {
     final urlController = TextEditingController(text: EnvConfig.apiBaseUrl);
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.surface1,
+      backgroundColor: AppColors.surfaceAlt,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(8.0)), // rounded.lg
+        side: BorderSide(color: AppColors.border, width: 1.0),
       ),
       builder: (ctx) {
         return Padding(
@@ -132,58 +146,54 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'API Server Configuration',
-                    style: TextStyle(
-                      color: AppColors.ink,
-                      fontSize: 16.0,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  const SectionHeader(
+                    title: 'API Server Config',
+                    padding: EdgeInsets.zero,
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded, color: AppColors.inkSubtle),
+                  ButtonIconTile(
+                    icon: Icons.close_rounded,
+                    size: 36.0,
                     onPressed: () => Navigator.of(ctx).pop(),
                   ),
                 ],
               ),
               const SizedBox(height: 12.0),
-              const Text(
-                'Configure the backend host for physical device LAN testing or cloud staging:',
-                style: TextStyle(color: AppColors.inkSubtle, fontSize: 12.0),
+              Text(
+                'Configure the active backend host for local or cloud environments:'
+                    .toUpperCase(),
+                style: AppTypography.caption,
               ),
               const SizedBox(height: 16.0),
               TextField(
                 key: const Key('server_url_input'),
                 controller: urlController,
-                style: const TextStyle(color: AppColors.ink, fontSize: 13.5),
+                style: AppTypography.bodyMd,
                 decoration: InputDecoration(
-                  labelText: 'API Base URL',
-                  labelStyle: const TextStyle(color: AppColors.inkSubtle),
-                  hintText: 'https://man-u-ai.onrender.com/api/v1',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.0)),
+                  labelText: 'API BASE URL',
+                  hintText: 'http://localhost:4000/api/v1',
                 ),
               ),
-              const SizedBox(height: 12.0),
+              const SizedBox(height: 14.0),
               Wrap(
                 spacing: 8.0,
                 runSpacing: 8.0,
                 children: [
-                  ActionChip(
-                    label: const Text('Production Cloud', style: TextStyle(fontSize: 11.0)),
+                  SecondaryButton(
+                    label: 'Localhost (4000)',
                     onPressed: () {
-                      urlController.text = EnvConfig.productionApiBaseUrl;
+                      urlController.text = EnvConfig.localHostApiBaseUrl;
                     },
                   ),
-                  ActionChip(
-                    label: const Text('Emulator (10.0.2.2)', style: TextStyle(fontSize: 11.0)),
+                  SecondaryButton(
+                    label: 'Emulator (10.0.2.2)',
                     onPressed: () {
                       urlController.text = EnvConfig.emulatorApiBaseUrl;
                     },
                   ),
-                  ActionChip(
-                    label: const Text('Localhost (4000)', style: TextStyle(fontSize: 11.0)),
+                  SecondaryButton(
+                    label: 'Cloud Staging',
                     onPressed: () {
-                      urlController.text = EnvConfig.localHostApiBaseUrl;
+                      urlController.text = EnvConfig.productionApiBaseUrl;
                     },
                   ),
                 ],
@@ -192,24 +202,33 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton(
+                    child: SecondaryButton(
+                      label: 'CANCEL',
                       onPressed: () => Navigator.of(ctx).pop(),
-                      child: const Text('Cancel'),
                     ),
                   ),
                   const SizedBox(width: 12.0),
                   Expanded(
-                    child: ElevatedButton(
-                      key: const Key('save_server_url_button'),
+                    child: MachinedPrimaryButton(
+                      buttonKey: const Key('save_server_url_button'),
+                      label: 'APPLY & SAVE',
+                      height: 40.0,
                       onPressed: () {
-                        final newUrl = urlController.text.trim();
-                        if (newUrl.isNotEmpty) {
-                          ref.read(authControllerProvider.notifier).setServerUrl(newUrl);
+                        final raw = urlController.text.trim();
+                        final err = EnvConfig.validateBaseUrl(raw, isRelease: false);
+                        if (err != null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(err),
+                              backgroundColor: AppColors.error,
+                            ),
+                          );
+                          return;
                         }
+                        ref.read(authControllerProvider.notifier).setServerUrl(raw);
                         Navigator.of(ctx).pop();
-                        _runHealthCheck();
+                        setState(() {});
                       },
-                      child: const Text('Apply & Test'),
                     ),
                   ),
                 ],
@@ -224,212 +243,212 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
-    final isLoading = authState is AuthLoading;
+    final isLoading = authState is AuthLoading || _isSubmitting;
     final errorMessage = authState is Unauthenticated ? authState.errorMessage : null;
     final activeBaseUrl = EnvConfig.apiBaseUrl;
 
     return Scaffold(
-      backgroundColor: AppColors.canvas,
+      backgroundColor: AppColors.surface,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 28.0),
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420.0),
+              constraints: const BoxConstraints(maxWidth: 440.0),
               child: Form(
                 key: _formKey,
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Brand Logo & Icon Header
-                    Center(
-                      child: Container(
-                        width: 56.0,
-                        height: 56.0,
-                        decoration: BoxDecoration(
-                          color: AppColors.surface2,
-                          borderRadius: BorderRadius.circular(14.0),
-                          border: Border.all(color: AppColors.hairlineStrong),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.primary.withValues(alpha: 0.25),
-                              blurRadius: 20.0,
-                              spreadRadius: 2.0,
+                    // Top Status Line
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const StatusDot(color: AppColors.success),
+                            const SizedBox(width: 8.0),
+                            Text(
+                              'OPERATIONAL CONSOLE // 4000',
+                              style: AppTypography.caption.copyWith(
+                                color: AppColors.onSurfaceVariant,
+                              ),
                             ),
                           ],
                         ),
-                        child: const Icon(
-                          Icons.precision_manufacturing_rounded,
-                          color: AppColors.primary,
-                          size: 30.0,
+                        if (kDebugMode)
+                          ButtonIconTile(
+                            key: const Key('configure_server_button'),
+                            icon: Icons.settings_rounded,
+                            size: 36.0,
+                            tooltip: 'Configure Server',
+                            onPressed: () => _showServerConfigModal(context),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12.0),
+
+                    // Square Avatar Slot (Signature 48px, 2px Primary Border)
+                    Center(
+                      child: Container(
+                        width: 48.0,
+                        height: 48.0,
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceAlt,
+                          borderRadius: BorderRadius.circular(8.0),
+                          border: Border.all(color: AppColors.primary, width: 2.0),
+                        ),
+                        child: const Center(
+                          child: Icon(
+                            Icons.precision_manufacturing_rounded,
+                            color: AppColors.primary,
+                            size: 26.0,
+                          ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 20.0),
+                    const SizedBox(height: 8.0),
 
                     // Title & Tagline
                     Text(
                       'MAN-U-AI',
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            letterSpacing: -0.5,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.ink,
-                          ),
+                      style: AppTypography.headlineLg.copyWith(
+                        fontSize: 24.0,
+                        letterSpacing: -0.5,
+                      ),
                     ),
-                    const SizedBox(height: 6.0),
+                    const SizedBox(height: 2.0),
                     Text(
                       'Industrial Reliability AI Copilot',
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.primaryHover,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.2,
-                          ),
+                      style: AppTypography.labelUppercase.copyWith(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                    const SizedBox(height: 10.0),
-                    Text(
-                      'Sign in to access evidence-grounded plant troubleshooting, equipment SOPs, and technical manuals.',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: AppColors.inkSubtle,
-                            height: 1.4,
-                          ),
-                    ),
-                    const SizedBox(height: 28.0),
+                    const SizedBox(height: 12.0),
 
-                    // Error Banner with Diagnostic Action
+                    // Section Heading with 4px Primary Bar
+                    const SectionHeader(
+                      title: 'OPERATOR CREDENTIALS',
+                      padding: EdgeInsets.only(bottom: 8.0),
+                    ),
+
+                    // Quick Role Switcher Chips (Instrumented Preset Buttons)
+                    Wrap(
+                      spacing: 8.0,
+                      runSpacing: 8.0,
+                      children: [
+                        _buildQuickRoleChip(
+                          label: 'LEAD ENGINEER',
+                          email: 'alex.mercer@plant.io',
+                          password: 'EngineerPassword123!',
+                          dotColor: AppColors.accentCategorical2,
+                        ),
+                        _buildQuickRoleChip(
+                          label: 'SHIFT OPERATOR',
+                          email: 'operator@plant.io',
+                          password: 'OperatorPassword123!',
+                          dotColor: AppColors.accentCategorical1,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8.0),
+
+                    // Error Banner
                     if (errorMessage != null && errorMessage.isNotEmpty) ...[
                       Container(
                         key: const Key('login_error_banner'),
-                        padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
+                        padding: const EdgeInsets.all(12.0),
                         decoration: BoxDecoration(
-                          color: AppColors.danger.withValues(alpha: 0.12),
+                          color: AppColors.error.withValues(alpha: 0.10),
                           borderRadius: BorderRadius.circular(8.0),
-                          border: Border.all(color: AppColors.danger.withValues(alpha: 0.6)),
+                          border: Border.all(
+                            color: AppColors.error.withValues(alpha: 0.20),
+                            width: 1.0,
+                          ),
                         ),
-                        child: Column(
+                        child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Padding(
-                                  padding: EdgeInsets.only(top: 2.0),
-                                  child: Icon(
-                                    Icons.error_outline_rounded,
-                                    color: AppColors.danger,
-                                    size: 18.0,
-                                  ),
-                                ),
-                                const SizedBox(width: 10.0),
-                                Expanded(
-                                  child: Text(
-                                    errorMessage,
-                                    style: const TextStyle(
-                                      color: AppColors.ink,
-                                      fontSize: 13.0,
-                                      height: 1.4,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                            const Padding(
+                              padding: EdgeInsets.only(top: 1.0),
+                              child: Icon(
+                                Icons.error_outline_rounded,
+                                color: AppColors.error,
+                                size: 16.0,
+                              ),
                             ),
-                            const SizedBox(height: 8.0),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                TextButton.icon(
-                                  key: const Key('retry_test_connection_button'),
-                                  onPressed: _isCheckingHealth ? null : _runHealthCheck,
-                                  icon: _isCheckingHealth
-                                      ? const SizedBox(
-                                          width: 12.0,
-                                          height: 12.0,
-                                          child: CircularProgressIndicator(strokeWidth: 1.5),
-                                        )
-                                      : const Icon(Icons.sync_rounded, size: 14.0),
-                                  label: const Text(
-                                    'Test Server Reachability',
-                                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
-                                  ),
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: AppColors.primaryHover,
-                                    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                                  ),
+                            const SizedBox(width: 10.0),
+                            Expanded(
+                              child: Text(
+                                errorMessage,
+                                style: AppTypography.caption.copyWith(
+                                  color: AppColors.error,
+                                  fontWeight: FontWeight.w700,
                                 ),
-                              ],
+                              ),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 20.0),
+                      const SizedBox(height: 16.0),
                     ],
 
                     // Email Field
                     Text(
-                      'Email address',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            fontSize: 13.0,
-                            color: AppColors.inkMuted,
-                          ),
+                      'WORK EMAIL',
+                      style: AppTypography.labelUppercase,
                     ),
-                    const SizedBox(height: 8.0),
+                    const SizedBox(height: 6.0),
                     TextFormField(
                       key: const Key('login_email_input'),
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
                       textInputAction: TextInputAction.next,
-                      autofillHints: const [AutofillHints.email],
                       enabled: !isLoading,
-                      style: const TextStyle(color: AppColors.ink, fontSize: 14.0),
+                      style: AppTypography.bodyMd,
                       decoration: const InputDecoration(
-                        hintText: 'operator@plant.io',
+                        hintText: 'OPERATOR@PLANT.IO',
                         prefixIcon: Icon(
-                          Icons.mail_outline_rounded,
-                          color: AppColors.inkTertiary,
-                          size: 20.0,
+                          Icons.alternate_email_rounded,
+                          size: 18.0,
+                          color: AppColors.onSurfaceVariant,
                         ),
                       ),
                       validator: (value) {
                         if (value == null || value.trim().isEmpty) {
                           return 'Please enter your email address';
                         }
-                        final emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
-                        if (!emailRegex.hasMatch(value.trim())) {
+                        if (!value.contains('@')) {
                           return 'Please enter a valid email address';
                         }
                         return null;
                       },
                     ),
-                    const SizedBox(height: 20.0),
+                    const SizedBox(height: 10.0),
 
                     // Password Field
                     Text(
-                      'Password',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            fontSize: 13.0,
-                            color: AppColors.inkMuted,
-                          ),
+                      'ACCESS KEY / PASSWORD',
+                      style: AppTypography.labelUppercase,
                     ),
-                    const SizedBox(height: 8.0),
+                    const SizedBox(height: 6.0),
                     TextFormField(
                       key: const Key('login_password_input'),
                       controller: _passwordController,
                       obscureText: _obscurePassword,
                       textInputAction: TextInputAction.done,
-                      autofillHints: const [AutofillHints.password],
                       enabled: !isLoading,
-                      style: const TextStyle(color: AppColors.ink, fontSize: 14.0),
+                      style: AppTypography.bodyMd,
                       onFieldSubmitted: (_) => _submit(),
                       decoration: InputDecoration(
-                        hintText: 'Enter your password',
+                        hintText: '••••••••••••',
                         prefixIcon: const Icon(
                           Icons.lock_outline_rounded,
-                          color: AppColors.inkTertiary,
-                          size: 20.0,
+                          size: 18.0,
+                          color: AppColors.onSurfaceVariant,
                         ),
                         suffixIcon: IconButton(
                           key: const Key('login_password_toggle'),
@@ -437,15 +456,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             _obscurePassword
                                 ? Icons.visibility_outlined
                                 : Icons.visibility_off_outlined,
-                            color: AppColors.inkTertiary,
-                            size: 20.0,
+                            size: 18.0,
+                            color: AppColors.onSurfaceVariant,
                           ),
                           onPressed: () {
                             setState(() {
                               _obscurePassword = !_obscurePassword;
                             });
                           },
-                          tooltip: _obscurePassword ? 'Show password' : 'Hide password',
                         ),
                       ),
                       validator: (value) {
@@ -458,163 +476,167 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 28.0),
+                    const SizedBox(height: 16.0),
 
-                    // Submit Button
-                    ElevatedButton(
-                      key: const Key('login_submit_button'),
-                      onPressed: isLoading ? null : _submit,
-                      child: isLoading
-                          ? const SizedBox(
-                              width: 20.0,
-                              height: 20.0,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.2,
-                                valueColor: AlwaysStoppedAnimation<Color>(AppColors.ink),
-                              ),
-                            )
-                          : const Text('Sign in to MAN-U-AI'),
+                    // Submit Button (Machined Primary Cobalt CTA)
+                    MachinedPrimaryButton(
+                      buttonKey: const Key('login_submit_button'),
+                      label: 'Sign in to MAN-U-AI',
+                      isLoading: isLoading,
+                      icon: Icons.login_rounded,
+                      onPressed: _submit,
                     ),
                     const SizedBox(height: 16.0),
 
-                    // Create Account Link
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      crossAxisAlignment: WrapCrossAlignment.center,
+                    // Register Link
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Text(
-                          "Don't have an account?",
-                          style: TextStyle(
-                            color: AppColors.inkSubtle,
-                            fontSize: 13.0,
-                          ),
+                        Text(
+                          "NEED PLANT ENROLLMENT? ",
+                          style: AppTypography.caption,
                         ),
-                        TextButton(
+                        InkWell(
                           key: const Key('login_create_account_button'),
-                          onPressed: isLoading
+                          onTap: isLoading
                               ? null
                               : () {
                                   ref.read(authControllerProvider.notifier).clearError();
                                   context.push('/register');
                                 },
-                          style: TextButton.styleFrom(
-                            foregroundColor: AppColors.primaryHover,
-                            padding: const EdgeInsets.symmetric(horizontal: 6.0),
-                          ),
-                          child: const Text(
-                            'Create account',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13.0,
+                          child: Text(
+                            "Create account",
+                            style: AppTypography.caption.copyWith(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16.0),
+                    const SizedBox(height: 24.0),
 
-                    // Server Connectivity Strip (Transparent Diagnostics)
+                    // Telemetry & Diagnostics Strip
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                      padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
                       decoration: BoxDecoration(
-                        color: AppColors.surface1,
+                        color: AppColors.surfaceAlt,
                         borderRadius: BorderRadius.circular(8.0),
-                        border: Border.all(color: AppColors.hairline),
+                        border: Border.all(color: AppColors.border, width: 1.0),
                       ),
                       child: Row(
                         children: [
-                          Icon(
-                            Icons.cloud_outlined,
-                            size: 15.0,
-                            color: _healthStatus != null && _healthStatus!.contains('Connected')
-                                ? AppColors.success
-                                : AppColors.inkSubtle,
-                          ),
+                          const StatusDot(color: AppColors.success, size: 8.0),
                           const SizedBox(width: 8.0),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'API: ${Uri.tryParse(activeBaseUrl)?.host ?? activeBaseUrl}',
+                                  'HOST: ${activeBaseUrl.replaceAll('/api/v1', '')}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: AppColors.inkSubtle,
-                                    fontSize: 11.0,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                                  style: AppTypography.caption,
                                 ),
-                                if (_healthStatus != null) ...[
-                                  const SizedBox(height: 2.0),
+                                if (_healthStatus != null)
                                   Text(
                                     _healthStatus!,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
+                                    style: AppTypography.caption.copyWith(
                                       color: _healthStatus!.contains('Connected')
                                           ? AppColors.success
                                           : AppColors.warning,
-                                      fontSize: 10.0,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
-                                ],
                               ],
                             ),
                           ),
-                          IconButton(
+                          ButtonIconTile(
                             key: const Key('check_server_health_button'),
                             icon: _isCheckingHealth
-                                ? const SizedBox(
-                                    width: 14.0,
-                                    height: 14.0,
-                                    child: CircularProgressIndicator(strokeWidth: 1.8),
-                                  )
-                                : const Icon(Icons.wifi_find_rounded, size: 16.0),
-                            color: AppColors.primaryHover,
-                            tooltip: 'Ping server health',
+                                ? Icons.sync_rounded
+                                : Icons.cloud_outlined,
+                            size: 32.0,
+                            tooltip: 'Ping Health',
                             onPressed: _isCheckingHealth ? null : _runHealthCheck,
-                            visualDensity: VisualDensity.compact,
                           ),
-                          if (kDebugMode) ...[
-                            IconButton(
-                              key: const Key('configure_server_button'),
-                              icon: const Icon(Icons.settings_outlined, size: 16.0),
-                              color: AppColors.inkSubtle,
-                              tooltip: 'Configure server URL',
-                              onPressed: () => _showServerConfigModal(context),
-                              visualDensity: VisualDensity.compact,
-                            ),
-                          ],
                         ],
                       ),
                     ),
-                    const SizedBox(height: 18.0),
+                    const SizedBox(height: 16.0),
 
-                    // Plant Security Notice
+                    // Security Footer
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const Icon(
-                          Icons.verified_user_outlined,
-                          color: AppColors.brandSecure,
+                          Icons.shield_outlined,
                           size: 14.0,
+                          color: AppColors.onSurfaceVariant,
                         ),
                         const SizedBox(width: 6.0),
                         Text(
                           'Authorized Facility Personnel Only',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: AppColors.inkTertiary,
-                                fontSize: 11.0,
-                                fontWeight: FontWeight.w500,
-                              ),
+                          style: AppTypography.caption,
                         ),
                       ],
                     ),
                   ],
                 ),
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickRoleChip({
+    required String label,
+    required String email,
+    required String password,
+    required Color dotColor,
+  }) {
+    final isSelected = _emailController.text == email;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isSelected ? AppColors.primary : AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(8.0), // rounded.lg
+        border: Border.all(
+          color: isSelected ? AppColors.primary : AppColors.border,
+          width: 1.0,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8.0),
+          onTap: () => _fillCredentials(email, password),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8.0,
+                  height: 8.0,
+                  decoration: BoxDecoration(
+                    color: dotColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8.0),
+                Text(
+                  label,
+                  style: AppTypography.labelMd.copyWith(
+                    fontSize: 11.0,
+                    color: isSelected ? Colors.white : AppColors.onSurface,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
