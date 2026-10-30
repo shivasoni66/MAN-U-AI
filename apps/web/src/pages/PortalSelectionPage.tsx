@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { ShieldCheck, Cpu, ArrowRight, Smartphone, Lock, Activity, Sparkles, Database } from "lucide-react";
+import { SubdomainLink } from "@/components/SubdomainLink";
 
 export function PortalSelectionPage() {
   return (
@@ -88,19 +89,21 @@ export function PortalSelectionPage() {
             </div>
 
             <div className="mt-7 pt-4 border-t border-hairline flex flex-col gap-2.5">
-              <Link
+              <SubdomainLink
+                target="admin"
                 to="/admin/login"
                 className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-warning hover:bg-warning/90 text-surface-0 font-semibold text-xs transition-all shadow-md shadow-warning/20 group/btn"
               >
                 <span>Admin Login</span>
                 <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
-              </Link>
-              <Link
+              </SubdomainLink>
+              <SubdomainLink
+                target="admin"
                 to="/admin/register"
                 className="text-center text-2xs text-ink-tertiary hover:text-ink transition-colors"
               >
                 Need admin provisioning policy? Learn more →
-              </Link>
+              </SubdomainLink>
             </div>
           </section>
 
@@ -143,19 +146,21 @@ export function PortalSelectionPage() {
             </div>
 
             <div className="mt-7 pt-4 border-t border-hairline flex flex-col gap-2.5">
-              <Link
+              <SubdomainLink
+                target="manager"
                 to="/manager/login"
                 className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-all shadow-md shadow-emerald-600/20 group/btn"
               >
                 <span>Manager / Operator Login</span>
                 <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
-              </Link>
-              <Link
+              </SubdomainLink>
+              <SubdomainLink
+                target="manager"
                 to="/manager/register"
                 className="text-center text-2xs text-ink-tertiary hover:text-ink transition-colors"
               >
                 New to operations? Request enrollment details →
-              </Link>
+              </SubdomainLink>
             </div>
           </section>
         </div>

@@ -4,6 +4,7 @@ import { ArrowRight, Lock, Mail, AlertCircle, ArrowLeftRight } from "lucide-reac
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi } from "@/lib/api";
 import { AuthLayout } from "@/shared/auth/AuthLayout";
+import { SubdomainLink } from "@/components/SubdomainLink";
 
 export function ManagerLoginPage() {
   const navigate = useNavigate();
@@ -73,13 +74,14 @@ export function ManagerLoginPage() {
           >
             Need plant-level access? Request enrollment
           </Link>
-          <Link
+          <SubdomainLink
+            target="admin"
             to="/admin/login"
             className="inline-flex items-center gap-1.5 text-ink-tertiary hover:text-ink transition-colors text-2xs"
           >
             <ArrowLeftRight size={11} />
             <span>Switch to Plant Administration Console</span>
-          </Link>
+          </SubdomainLink>
         </div>
       }
     >

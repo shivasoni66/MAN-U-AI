@@ -4,6 +4,7 @@ import { ArrowRight, Lock, Mail, AlertCircle, ArrowLeftRight } from "lucide-reac
 import { useAuth } from "@/contexts/AuthContext";
 import { authApi } from "@/lib/api";
 import { AuthLayout } from "@/shared/auth/AuthLayout";
+import { SubdomainLink } from "@/components/SubdomainLink";
 
 export function AdminLoginPage() {
   const navigate = useNavigate();
@@ -73,13 +74,14 @@ export function AdminLoginPage() {
           >
             Need administrator enrollment? View provisioning guide
           </Link>
-          <Link
+          <SubdomainLink
+            target="manager"
             to="/manager/login"
             className="inline-flex items-center gap-1.5 text-ink-tertiary hover:text-ink transition-colors text-2xs"
           >
             <ArrowLeftRight size={11} />
             <span>Switch to Plant Operations Workspace</span>
-          </Link>
+          </SubdomainLink>
         </div>
       }
     >

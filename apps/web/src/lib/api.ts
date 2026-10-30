@@ -51,8 +51,14 @@ apiClient.interceptors.response.use(
       disconnectSocket();
       localStorage.removeItem("manuai_token");
       localStorage.removeItem("manuai_user");
-      if (window.location.pathname !== "/login") {
-        window.location.href = "/login";
+      const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
+      const currentHost = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
+      const isAdmin = currentHost === "admin.sharprad-x.tech" || currentHost.startsWith("admin.");
+      const isManager = currentHost === "manager.sharprad-x.tech" || currentHost.startsWith("manager.");
+      const targetLogin = isAdmin ? "/admin/login" : isManager ? "/manager/login" : "/login";
+
+      if (currentPath !== targetLogin && currentPath !== "/login" && currentPath !== "/admin/login" && currentPath !== "/manager/login") {
+        window.location.href = targetLogin;
       }
     }
     return Promise.reject(err);

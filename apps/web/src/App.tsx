@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { AdminRoutes } from "./admin/routes/AdminRoutes";
@@ -5,6 +6,7 @@ import { ManagerRoutes } from "./manager/routes/ManagerRoutes";
 import { LoginPage } from "./pages/LoginPage";
 import { PortalSelectionPage } from "./pages/PortalSelectionPage";
 import { EngineerMobileRequiredPage } from "./pages/EngineerMobileRequiredPage";
+import { getHostnameType, buildSubdomainUrl, performExternalRedirect } from "./lib/hostname";
 import type { UserRole } from "@man-u-ai/shared";
 
 export type WebPanel = "admin" | "manager";
@@ -32,10 +34,72 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 function RoleHomeRedirect() {
   const { user, isAuthenticated, isLoading } = useAuth();
   if (isLoading) return null;
+
+  const hostnameType = getHostnameType();
+
+  // Admin hostname root routing (e.g. admin.sharprad-x.tech)
+  if (hostnameType === "admin") {
+    if (!isAuthenticated || !user) {
+      return <Navigate to="/admin/login" replace />;
+    }
+    if (user.role === "admin") {
+      return <Navigate to="/admin" replace />;
+    }
+    return <Navigate to={getRoleLanding(user.role)} replace />;
+  }
+
+  // Manager hostname root routing (e.g. manager.sharprad-x.tech)
+  if (hostnameType === "manager") {
+    if (!isAuthenticated || !user) {
+      return <Navigate to="/manager/login" replace />;
+    }
+    if (user.role === "manager") {
+      return <Navigate to="/manager" replace />;
+    }
+    return <Navigate to={getRoleLanding(user.role)} replace />;
+  }
+
+  // Root / Main hostname routing (e.g. sharprad-x.tech or localhost)
   if (!isAuthenticated || !user) {
     return <PortalSelectionPage />;
   }
   return <Navigate to={getRoleLanding(user.role)} replace />;
+}
+
+function CrossSubdomainRedirect({ target }: { target: "admin" | "manager" }) {
+  const location = useLocation();
+
+  useEffect(() => {
+    const targetUrl = buildSubdomainUrl(
+      target,
+      location.pathname,
+      location.search,
+      location.hash
+    );
+    performExternalRedirect(targetUrl);
+  }, [target, location.pathname, location.search, location.hash]);
+
+  return (
+    <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
+      <div className="text-sm text-ink-subtle flex items-center gap-2">
+        <span className="inline-block w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <span>
+          Redirecting to {target === "admin" ? "Plant Administration Console" : "Plant Operations Workspace"}...
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function HostnameLoginRoute({ children }: { children: React.ReactNode }) {
+  const hostnameType = getHostnameType();
+  if (hostnameType === "admin") {
+    return <Navigate to="/admin/login" replace />;
+  }
+  if (hostnameType === "manager") {
+    return <Navigate to="/manager/login" replace />;
+  }
+  return <>{children}</>;
 }
 
 function LegacyRouteRedirect() {
@@ -43,7 +107,13 @@ function LegacyRouteRedirect() {
   const location = useLocation();
 
   if (isLoading) return null;
-  if (!isAuthenticated || !user) return <Navigate to="/login" replace />;
+  const hostnameType = getHostnameType();
+
+  if (!isAuthenticated || !user) {
+    if (hostnameType === "admin") return <Navigate to="/admin/login" replace />;
+    if (hostnameType === "manager") return <Navigate to="/manager/login" replace />;
+    return <Navigate to="/login" replace />;
+  }
 
   const panel = getWebPanel(user.role);
   if (!panel) return <Navigate to={getRoleLanding(user.role)} replace />;
@@ -90,6 +160,8 @@ function EngineerOnlyRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AppRoutes() {
+  const hostnameType = getHostnameType();
+
   return (
     <Routes>
       {/* Root Role-Based Home Redirect & Portal Selection */}
@@ -100,17 +172,37 @@ function AppRoutes() {
       <Route
         path="/login"
         element={
-          <PublicRoute>
-            <LoginPage />
-          </PublicRoute>
+          <HostnameLoginRoute>
+            <PublicRoute>
+              <LoginPage />
+            </PublicRoute>
+          </HostnameLoginRoute>
         }
       />
 
       {/* Admin Panel Independent Route Tree */}
-      <Route path="/admin/*" element={<AdminRoutes />} />
+      <Route
+        path="/admin/*"
+        element={
+          hostnameType === "manager" ? (
+            <CrossSubdomainRedirect target="admin" />
+          ) : (
+            <AdminRoutes />
+          )
+        }
+      />
 
       {/* Manager Panel Independent Route Tree */}
-      <Route path="/manager/*" element={<ManagerRoutes />} />
+      <Route
+        path="/manager/*"
+        element={
+          hostnameType === "admin" ? (
+            <CrossSubdomainRedirect target="manager" />
+          ) : (
+            <ManagerRoutes />
+          )
+        }
+      />
 
       {/* Dedicated Engineer Mobile Application Notice */}
       <Route

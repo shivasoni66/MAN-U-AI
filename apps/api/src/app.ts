@@ -72,6 +72,11 @@ app.use(
   })
 );
 
+export const DEFAULT_PRODUCTION_ORIGINS = [
+  "https://admin.sharprad-x.tech",
+  "https://manager.sharprad-x.tech",
+];
+
 export function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) return true;
 
@@ -86,6 +91,7 @@ export function isAllowedOrigin(origin: string | undefined): boolean {
     }
     const devOrigins = [
       ...configuredOrigins,
+      ...DEFAULT_PRODUCTION_ORIGINS,
       "http://localhost:5173",
       "http://127.0.0.1:5173",
       "http://localhost:4000",
@@ -96,8 +102,11 @@ export function isAllowedOrigin(origin: string | undefined): boolean {
     return devOrigins.includes(origin) || devOrigins.includes("*");
   }
 
-  const explicitOrigins = configuredOrigins.filter((o) => o !== "*");
-  return explicitOrigins.includes(origin);
+  const explicitOrigins = new Set([
+    ...DEFAULT_PRODUCTION_ORIGINS,
+    ...configuredOrigins.filter((o) => o !== "*"),
+  ]);
+  return explicitOrigins.has(origin);
 }
 
 app.use(
