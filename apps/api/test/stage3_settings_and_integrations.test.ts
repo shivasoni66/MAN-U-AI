@@ -77,7 +77,7 @@ describe("Stage 3.1: Authoritative Settings, Model Allowlist, Integration RBAC &
     it("GET /settings returns default settings and supportedModels allowlist", async () => {
       const res = await request(app)
         .get("/api/v1/settings")
-        .set("Authorization", `Bearer ${viewerToken}`);
+        .set("Authorization", `Bearer ${adminToken}`);
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -105,7 +105,7 @@ describe("Stage 3.1: Authoritative Settings, Model Allowlist, Integration RBAC &
         setIsConnectedToMongo(false);
         const res = await request(app)
           .get("/api/v1/settings")
-          .set("Authorization", `Bearer ${viewerToken}`);
+          .set("Authorization", `Bearer ${adminToken}`);
 
         expect(res.status).toBe(503);
         expect(res.body.success).toBe(false);
@@ -206,7 +206,7 @@ describe("Stage 3.1: Authoritative Settings, Model Allowlist, Integration RBAC &
       // Verify persistence via GET /settings
       const getRes = await request(app)
         .get("/api/v1/settings")
-        .set("Authorization", `Bearer ${viewerToken}`);
+        .set("Authorization", `Bearer ${adminToken}`);
 
       expect(getRes.status).toBe(200);
       expect(getRes.body.data.facilityName).toBe(updatePayload.facilityName);
@@ -326,7 +326,7 @@ describe("Stage 3.1: Authoritative Settings, Model Allowlist, Integration RBAC &
     it("rejects invalid range parameter with 400 Validation Error", async () => {
       const res = await request(app)
         .get("/api/v1/analytics/insights?range=90d")
-        .set("Authorization", `Bearer ${viewerToken}`);
+        .set("Authorization", `Bearer ${adminToken}`);
 
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
@@ -367,7 +367,7 @@ describe("Stage 3.1: Authoritative Settings, Model Allowlist, Integration RBAC &
         // Query 7d
         const res7d = await request(app)
           .get("/api/v1/analytics/insights?range=7d")
-          .set("Authorization", `Bearer ${viewerToken}`);
+          .set("Authorization", `Bearer ${adminToken}`);
 
         expect(res7d.status).toBe(200);
         expect(res7d.body.data.range).toBe("7d");
@@ -376,7 +376,7 @@ describe("Stage 3.1: Authoritative Settings, Model Allowlist, Integration RBAC &
         // Query 30d
         const res30d = await request(app)
           .get("/api/v1/analytics/insights?range=30d")
-          .set("Authorization", `Bearer ${viewerToken}`);
+          .set("Authorization", `Bearer ${adminToken}`);
 
         expect(res30d.status).toBe(200);
         expect(res30d.body.data.range).toBe("30d");
@@ -385,7 +385,7 @@ describe("Stage 3.1: Authoritative Settings, Model Allowlist, Integration RBAC &
         // Query all
         const resAll = await request(app)
           .get("/api/v1/analytics/insights?range=all")
-          .set("Authorization", `Bearer ${viewerToken}`);
+          .set("Authorization", `Bearer ${adminToken}`);
 
         expect(resAll.status).toBe(200);
         expect(resAll.body.data.range).toBe("all");
@@ -408,7 +408,7 @@ describe("Stage 3.1: Authoritative Settings, Model Allowlist, Integration RBAC &
     it("GET /integrations/status returns dynamic status and verifies local directory writeability", async () => {
       const res = await request(app)
         .get("/api/v1/integrations/status")
-        .set("Authorization", `Bearer ${viewerToken}`);
+        .set("Authorization", `Bearer ${adminToken}`);
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
@@ -702,7 +702,7 @@ describe("Stage 3.1: Authoritative Settings, Model Allowlist, Integration RBAC &
 
       const getRes = await request(app)
         .get("/api/v1/settings")
-        .set("Authorization", `Bearer ${viewerToken}`);
+        .set("Authorization", `Bearer ${adminToken}`);
 
       expect(getRes.status).toBe(500);
       expect(getRes.body.success).toBe(false);
@@ -880,7 +880,7 @@ describe("Stage 3.1: Authoritative Settings, Model Allowlist, Integration RBAC &
       try {
         const res = await request(app)
           .get("/api/v1/settings")
-          .set("Authorization", `Bearer ${viewerToken}`);
+          .set("Authorization", `Bearer ${adminToken}`);
 
         expect(res.status).toBe(500);
         expect(warnSpy).toHaveBeenCalled();
@@ -1080,7 +1080,7 @@ describe("Stage 3.1: Authoritative Settings, Model Allowlist, Integration RBAC &
     it("GET /settings exposes modelCapabilities indicating all modern models omit sampling parameters", async () => {
       const res = await request(app)
         .get("/api/v1/settings")
-        .set("Authorization", `Bearer ${viewerToken}`);
+        .set("Authorization", `Bearer ${adminToken}`);
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);

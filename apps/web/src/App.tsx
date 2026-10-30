@@ -1,51 +1,27 @@
+import { useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
-import { AppShell } from "./components/layout/AppShell";
+import { AdminRoutes } from "./admin/routes/AdminRoutes";
+import { ManagerRoutes } from "./manager/routes/ManagerRoutes";
 import { LoginPage } from "./pages/LoginPage";
-import { AssistantPage } from "./pages/AssistantPage";
-import { KnowledgeLibraryPage } from "./pages/KnowledgeLibraryPage";
-import { ManualViewerPage } from "./pages/ManualViewerPage";
-import { EquipmentPage } from "./pages/EquipmentPage";
-import { SummariesPage } from "./pages/SummariesPage";
-import { InsightsPage } from "./pages/InsightsPage";
-import { ActivityPage } from "./pages/ActivityPage";
-import { IntegrationsPage } from "./pages/IntegrationsPage";
-import { SettingsPage } from "./pages/SettingsPage";
-import { ManagerDashboardPage } from "./pages/ManagerDashboardPage";
+import { PortalSelectionPage } from "./pages/PortalSelectionPage";
 import { EngineerMobileRequiredPage } from "./pages/EngineerMobileRequiredPage";
+import { getHostnameType, buildSubdomainUrl, performExternalRedirect } from "./lib/hostname";
 import type { UserRole } from "@man-u-ai/shared";
 
-type WebPanel = "admin" | "manager";
+export type WebPanel = "admin" | "manager";
 
-function getWebPanel(role: UserRole | undefined): WebPanel | null {
+export function getWebPanel(role: UserRole | undefined): WebPanel | null {
   if (role === "admin") return "admin";
   if (role === "manager") return "manager";
   return null;
 }
 
-function getRoleLanding(role: UserRole | undefined): string {
+export function getRoleLanding(role: UserRole | undefined): string {
   if (role === "admin") return "/admin";
   if (role === "manager") return "/manager";
   if (role === "engineer") return "/engineer-mobile-required";
   return "/unsupported-access";
-}
-
-function ProtectedPanelRoute({
-  panel,
-  children,
-}: {
-  panel: WebPanel;
-  children: React.ReactNode;
-}) {
-  const { user, isAuthenticated, isLoading } = useAuth();
-
-  if (isLoading) return null;
-  if (!isAuthenticated || !user) return <Navigate to="/login" replace />;
-  if (getWebPanel(user.role) !== panel) {
-    return <Navigate to={getRoleLanding(user.role)} replace />;
-  }
-
-  return <>{children}</>;
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
@@ -58,8 +34,72 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 function RoleHomeRedirect() {
   const { user, isAuthenticated, isLoading } = useAuth();
   if (isLoading) return null;
-  if (!isAuthenticated || !user) return <Navigate to="/login" replace />;
+
+  const hostnameType = getHostnameType();
+
+  // Admin hostname root routing (e.g. admin.sharprad-x.tech)
+  if (hostnameType === "admin") {
+    if (!isAuthenticated || !user) {
+      return <Navigate to="/admin/login" replace />;
+    }
+    if (user.role === "admin") {
+      return <Navigate to="/admin" replace />;
+    }
+    return <Navigate to={getRoleLanding(user.role)} replace />;
+  }
+
+  // Manager hostname root routing (e.g. manager.sharprad-x.tech)
+  if (hostnameType === "manager") {
+    if (!isAuthenticated || !user) {
+      return <Navigate to="/manager/login" replace />;
+    }
+    if (user.role === "manager") {
+      return <Navigate to="/manager" replace />;
+    }
+    return <Navigate to={getRoleLanding(user.role)} replace />;
+  }
+
+  // Root / Main hostname routing (e.g. sharprad-x.tech or localhost)
+  if (!isAuthenticated || !user) {
+    return <PortalSelectionPage />;
+  }
   return <Navigate to={getRoleLanding(user.role)} replace />;
+}
+
+function CrossSubdomainRedirect({ target }: { target: "admin" | "manager" }) {
+  const location = useLocation();
+
+  useEffect(() => {
+    const targetUrl = buildSubdomainUrl(
+      target,
+      location.pathname,
+      location.search,
+      location.hash
+    );
+    performExternalRedirect(targetUrl);
+  }, [target, location.pathname, location.search, location.hash]);
+
+  return (
+    <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
+      <div className="text-sm text-ink-subtle flex items-center gap-2">
+        <span className="inline-block w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <span>
+          Redirecting to {target === "admin" ? "Plant Administration Console" : "Plant Operations Workspace"}...
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function HostnameLoginRoute({ children }: { children: React.ReactNode }) {
+  const hostnameType = getHostnameType();
+  if (hostnameType === "admin") {
+    return <Navigate to="/admin/login" replace />;
+  }
+  if (hostnameType === "manager") {
+    return <Navigate to="/manager/login" replace />;
+  }
+  return <>{children}</>;
 }
 
 function LegacyRouteRedirect() {
@@ -67,7 +107,13 @@ function LegacyRouteRedirect() {
   const location = useLocation();
 
   if (isLoading) return null;
-  if (!isAuthenticated || !user) return <Navigate to="/login" replace />;
+  const hostnameType = getHostnameType();
+
+  if (!isAuthenticated || !user) {
+    if (hostnameType === "admin") return <Navigate to="/admin/login" replace />;
+    if (hostnameType === "manager") return <Navigate to="/manager/login" replace />;
+    return <Navigate to="/login" replace />;
+  }
 
   const panel = getWebPanel(user.role);
   if (!panel) return <Navigate to={getRoleLanding(user.role)} replace />;
@@ -98,85 +144,6 @@ function UnsupportedAccessPage() {
   );
 }
 
-function AppRoutes() {
-  return (
-    <Routes>
-      <Route
-        path="/login"
-        element={
-          <PublicRoute>
-            <LoginPage />
-          </PublicRoute>
-        }
-      />
-
-      <Route
-        path="/"
-        element={<RoleHomeRedirect />}
-      />
-
-      <Route
-        path="/admin"
-        element={
-          <ProtectedPanelRoute panel="admin">
-            <AppShell panel="admin" />
-          </ProtectedPanelRoute>
-        }
-      >
-        <Route index element={<InsightsPage />} />
-        <Route path="assistant" element={<AssistantPage />} />
-        <Route path="chat/:conversationId" element={<AssistantPage />} />
-        <Route path="knowledge" element={<KnowledgeLibraryPage />} />
-        <Route path="knowledge/manuals/:documentId" element={<ManualViewerPage />} />
-        <Route path="equipment" element={<EquipmentPage />} />
-        <Route path="summaries" element={<SummariesPage />} />
-        <Route path="insights" element={<InsightsPage />} />
-        <Route path="activity" element={<ActivityPage />} />
-        <Route path="integrations" element={<IntegrationsPage />} />
-        <Route path="settings" element={<SettingsPage />} />
-        <Route path="*" element={<Navigate to="/admin" replace />} />
-      </Route>
-
-      <Route
-        path="/manager"
-        element={
-          <ProtectedPanelRoute panel="manager">
-            <AppShell panel="manager" />
-          </ProtectedPanelRoute>
-        }
-      >
-        <Route index element={<ManagerDashboardPage />} />
-        <Route path="assistant" element={<AssistantPage />} />
-        <Route path="chat/:conversationId" element={<AssistantPage />} />
-        <Route path="knowledge" element={<KnowledgeLibraryPage />} />
-        <Route path="knowledge/manuals/:documentId" element={<ManualViewerPage />} />
-        <Route path="equipment" element={<EquipmentPage />} />
-        <Route path="summaries" element={<SummariesPage />} />
-        <Route path="*" element={<Navigate to="/manager" replace />} />
-      </Route>
-
-      <Route
-        path="/engineer-mobile-required"
-        element={
-          <EngineerOnlyRoute>
-            <EngineerMobileRequiredPage />
-          </EngineerOnlyRoute>
-        }
-      />
-      <Route
-        path="/unsupported-access"
-        element={
-          <AuthenticatedOnlyRoute>
-            <UnsupportedAccessPage />
-          </AuthenticatedOnlyRoute>
-        }
-      />
-
-      <Route path="*" element={<LegacyRouteRedirect />} />
-    </Routes>
-  );
-}
-
 function AuthenticatedOnlyRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
   if (isLoading) return null;
@@ -190,6 +157,77 @@ function EngineerOnlyRoute({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated || !user) return <Navigate to="/login" replace />;
   if (user.role !== "engineer") return <Navigate to={getRoleLanding(user.role)} replace />;
   return <>{children}</>;
+}
+
+function AppRoutes() {
+  const hostnameType = getHostnameType();
+
+  return (
+    <Routes>
+      {/* Root Role-Based Home Redirect & Portal Selection */}
+      <Route path="/" element={<RoleHomeRedirect />} />
+      <Route path="/portal" element={<RoleHomeRedirect />} />
+
+      {/* Global / Legacy Login */}
+      <Route
+        path="/login"
+        element={
+          <HostnameLoginRoute>
+            <PublicRoute>
+              <LoginPage />
+            </PublicRoute>
+          </HostnameLoginRoute>
+        }
+      />
+
+      {/* Admin Panel Independent Route Tree */}
+      <Route
+        path="/admin/*"
+        element={
+          hostnameType === "manager" ? (
+            <CrossSubdomainRedirect target="admin" />
+          ) : (
+            <AdminRoutes />
+          )
+        }
+      />
+
+      {/* Manager Panel Independent Route Tree */}
+      <Route
+        path="/manager/*"
+        element={
+          hostnameType === "admin" ? (
+            <CrossSubdomainRedirect target="manager" />
+          ) : (
+            <ManagerRoutes />
+          )
+        }
+      />
+
+      {/* Dedicated Engineer Mobile Application Notice */}
+      <Route
+        path="/engineer-mobile-required"
+        element={
+          <EngineerOnlyRoute>
+            <EngineerMobileRequiredPage />
+          </EngineerOnlyRoute>
+        }
+      />
+
+      {/* Restricted Sandbox / Viewer Unsupported Access Notice */}
+      <Route
+        path="/unsupported-access"
+        element={
+          <AuthenticatedOnlyRoute>
+            <UnsupportedAccessPage />
+          </AuthenticatedOnlyRoute>
+        }
+      />
+
+      {/* Legacy Fallback Redirect */}
+      <Route path="*" element={<LegacyRouteRedirect />} />
+    </Routes>
+  );
 }
 
 export default function App() {

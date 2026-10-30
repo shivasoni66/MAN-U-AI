@@ -15,6 +15,8 @@ describe("Manager / Operator Role RBAC & Access Boundaries", () => {
   let managerToken: string;
   let viewerId: string;
   let viewerToken: string;
+  let engineerId: string;
+  let engineerToken: string;
   const createdEquipmentIds: string[] = [];
   const createdDocIds: string[] = [];
   const createdUserIds: string[] = [];
@@ -69,6 +71,22 @@ describe("Manager / Operator Role RBAC & Access Boundaries", () => {
       env.JWT_SECRET,
       { expiresIn: "1h" }
     );
+
+    // 4. Engineer account
+    engineerId = new mongoose.Types.ObjectId().toString();
+    createdUserIds.push(engineerId);
+    await User.create({
+      _id: engineerId,
+      name: "Field Service Engineer",
+      email: `engineer-${runId}@plant.io`,
+      passwordHash: "mockedHashForTestOnly123!",
+      role: "engineer",
+    });
+    engineerToken = jwt.sign(
+      { id: engineerId, email: `engineer-${runId}@plant.io`, name: "Field Service Engineer", role: "engineer" },
+      env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
   });
 
   afterAll(async () => {
@@ -90,6 +108,46 @@ describe("Manager / Operator Role RBAC & Access Boundaries", () => {
   it("permits admin to list all users (GET /api/v1/users)", async () => {
     const res = await request(app)
       .get("/api/v1/users")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(Array.isArray(res.body.data)).toBe(true);
+  });
+
+  it("permits admin to retrieve facility settings (GET /api/v1/settings)", async () => {
+    const res = await request(app)
+      .get("/api/v1/settings")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveProperty("facilityName");
+  });
+
+  it("permits admin to retrieve integration status (GET /api/v1/integrations/status)", async () => {
+    const res = await request(app)
+      .get("/api/v1/integrations/status")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveProperty("mongodb");
+  });
+
+  it("permits admin to retrieve administrative insights (GET /api/v1/analytics/insights)", async () => {
+    const res = await request(app)
+      .get("/api/v1/analytics/insights")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data).toHaveProperty("totalIndexedDocuments");
+  });
+
+  it("permits admin to retrieve audit logs (GET /api/v1/audit)", async () => {
+    const res = await request(app)
+      .get("/api/v1/audit")
       .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
@@ -196,6 +254,23 @@ describe("Manager / Operator Role RBAC & Access Boundaries", () => {
     expect(res.body.error.code).toBe("FORBIDDEN");
   });
 
+  it("rejects engineer from accessing administrative audit log (GET /api/v1/audit)", async () => {
+    const res = await request(app)
+      .get("/api/v1/audit")
+      .set("Authorization", `Bearer ${engineerToken}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("rejects unauthenticated requests to audit log (GET /api/v1/audit)", async () => {
+    const res = await request(app).get("/api/v1/audit");
+
+    expect(res.status).toBe(401);
+    expect(res.body.success).toBe(false);
+  });
+
   it("rejects manager from listing users (GET /api/v1/users)", async () => {
     const res = await request(app)
       .get("/api/v1/users")
@@ -264,6 +339,36 @@ describe("Manager / Operator Role RBAC & Access Boundaries", () => {
     expect(res.body.error.code).toBe("FORBIDDEN");
   });
 
+  it("rejects manager from reading facility settings (GET /api/v1/settings)", async () => {
+    const res = await request(app)
+      .get("/api/v1/settings")
+      .set("Authorization", `Bearer ${managerToken}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("rejects manager from viewing integration status (GET /api/v1/integrations/status)", async () => {
+    const res = await request(app)
+      .get("/api/v1/integrations/status")
+      .set("Authorization", `Bearer ${managerToken}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("rejects manager from accessing administrative insights (GET /api/v1/analytics/insights)", async () => {
+    const res = await request(app)
+      .get("/api/v1/analytics/insights")
+      .set("Authorization", `Bearer ${managerToken}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.code).toBe("FORBIDDEN");
+  });
+
   // ── 4. Viewer Blocked from Write & Operational Actions ────────────────────────
 
   it("rejects viewer from uploading documents (POST /api/v1/documents/upload)", async () => {
@@ -301,6 +406,16 @@ describe("Manager / Operator Role RBAC & Access Boundaries", () => {
   it("rejects viewer from accessing operational summaries (GET /api/v1/summaries)", async () => {
     const res = await request(app)
       .get("/api/v1/summaries")
+      .set("Authorization", `Bearer ${viewerToken}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("rejects viewer from accessing administrative audit log (GET /api/v1/audit)", async () => {
+    const res = await request(app)
+      .get("/api/v1/audit")
       .set("Authorization", `Bearer ${viewerToken}`);
 
     expect(res.status).toBe(403);

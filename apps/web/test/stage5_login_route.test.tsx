@@ -37,7 +37,7 @@ describe("Stage 5.3 — Client-Side Route & Static Fallback Resolution", () => {
     expect(screen.queryByText(/Quick Demo Access/i)).toBeNull();
   });
 
-  it("redirects unauthenticated root / navigation to /login", () => {
+  it("directs unauthenticated root / navigation to the PortalSelectionPage", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     });
@@ -50,8 +50,9 @@ describe("Stage 5.3 — Client-Side Route & Static Fallback Resolution", () => {
       </QueryClientProvider>
     );
 
-    expect(screen.getByText("Sign In to Web Workspace")).toBeDefined();
-    expect(screen.getByPlaceholderText("manager@plant-line.com")).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Select Workspace Portal" })).toBeDefined();
+    expect(screen.getByRole("link", { name: /Admin Login/i })).toBeDefined();
+    expect(screen.getByRole("link", { name: /Manager \/ Operator Login/i })).toBeDefined();
   });
 
   it("verifies production build output contains pre-generated static route fallbacks", () => {

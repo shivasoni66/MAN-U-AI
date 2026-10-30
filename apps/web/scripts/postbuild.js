@@ -20,9 +20,15 @@ const notFoundPath = path.join(distDir, "404.html");
 fs.writeFileSync(notFoundPath, indexHtml);
 console.log("[postbuild] Created dist/404.html");
 
+// Ensure Cloudflare Pages _redirects file exists for 200 rewrite
+const redirectsPath = path.join(distDir, "_redirects");
+fs.writeFileSync(redirectsPath, "# Cloudflare Pages SPA Catch-all Rewrite\n/* /index.html 200\n");
+console.log("[postbuild] Created dist/_redirects for Cloudflare Pages SPA support");
+
 // Pre-generate files for top-level and panel-prefixed client routes so direct
 // navigation and browser refresh work even before a hosting rewrite is configured.
 const routes = [
+  "portal",
   "login",
   "engineer-mobile-required",
   "unsupported-access",
@@ -35,21 +41,28 @@ const routes = [
   "settings",
   "chat",
   "admin",
+  "admin/login",
+  "admin/register",
   "admin/assistant",
   "admin/chat",
   "admin/knowledge",
   "admin/equipment",
   "admin/summaries",
   "admin/insights",
+  "admin/users",
   "admin/activity",
   "admin/integrations",
   "admin/settings",
   "manager",
+  "manager/login",
+  "manager/register",
   "manager/assistant",
   "manager/chat",
   "manager/knowledge",
   "manager/equipment",
   "manager/summaries",
+  "manager/operations",
+  "manager/maintenance",
 ];
 
 for (const route of routes) {

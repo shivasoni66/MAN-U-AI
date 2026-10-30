@@ -169,8 +169,8 @@ Note: Label generated content truthfully. Do not invent unrecorded failures or f
   }
 });
 
-// GET /analytics/insights - Real database counts and reliability metrics
-analyticsRouter.get("/analytics/insights", requireAuth, async (req: Request, res: Response) => {
+// GET /analytics/insights - Real database counts and reliability metrics (Admin only)
+analyticsRouter.get("/analytics/insights", requireAuth, requireRole(["admin"]), async (req: Request, res: Response) => {
   const rawRange = typeof req.query.range === "string" ? req.query.range.toLowerCase() : "all";
   const validRanges = ["7d", "30d", "all"];
   if (!validRanges.includes(rawRange)) {
@@ -234,8 +234,8 @@ analyticsRouter.get("/analytics/insights", requireAuth, async (req: Request, res
   }
 });
 
-// GET /audit - Get real audit events from MongoDB (Admins & Engineers only; Viewers strictly forbidden)
-analyticsRouter.get("/audit", requireAuth, requireRole(["admin", "engineer"]), async (req: Request, res: Response) => {
+// GET /audit - Get real audit events from MongoDB (Admin only; Engineers, Managers & Viewers strictly forbidden)
+analyticsRouter.get("/audit", requireAuth, requireRole(["admin"]), async (req: Request, res: Response) => {
   if (!isConnectedToMongo) {
     return res.status(503).json({
       success: false,

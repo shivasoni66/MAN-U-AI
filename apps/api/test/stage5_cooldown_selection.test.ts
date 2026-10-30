@@ -315,7 +315,7 @@ describe("Stage 5.6.2: Cooldown-Aware Model Selection, Fallback, and Integration
   it("9. Regression: Settings validation and persistence accepts gemini-3.5-flash-lite", async () => {
     const res = await request(app)
       .get("/api/v1/settings")
-      .set("Authorization", `Bearer ${engineerToken}`);
+      .set("Authorization", `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.data.supportedModels).toContain("gemini-3.5-flash-lite");

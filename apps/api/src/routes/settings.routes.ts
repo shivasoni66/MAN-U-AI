@@ -111,8 +111,8 @@ export function sanitizeError(err: unknown): string {
   return `[${errCategory}] ${msg}`;
 }
 
-// GET /settings - Retrieve current authoritative facility and AI configuration
-settingsRouter.get("/", requireAuth, async (req: Request, res: Response) => {
+// GET /settings - Retrieve current authoritative facility and AI configuration (Admin only)
+settingsRouter.get("/", requireAuth, requireRole(["admin"]), async (req: Request, res: Response) => {
   if (!isConnectedToMongo) {
     return res.status(503).json({
       success: false,
