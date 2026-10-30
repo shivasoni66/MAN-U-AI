@@ -355,4 +355,44 @@ describe("Subdomain-Aware Routing & Cross-Panel Navigation", () => {
       expect(await screen.findByText(/Plant Operations Workspace/i)).toBeDefined();
     });
   });
+
+  describe("Local Development Subdomain Emulation (*.localhost:5173)", () => {
+    it("http://admin.localhost:5173/ opens existing AdminLoginPage when unauthenticated", async () => {
+      setTestHostname("admin.localhost");
+      renderAppWithRouter("/");
+      expect(await screen.findByText(/Plant Administration Console/i)).toBeDefined();
+      expect(screen.getByRole("button", { name: /Sign In to Admin Console/i })).toBeDefined();
+    });
+
+    it("http://admin.localhost:5173/ opens existing AdminDashboardPage when authenticated Admin", async () => {
+      setTestHostname("admin.localhost");
+      renderAppWithRouter("/", "admin");
+      expect(await screen.findByRole("heading", { name: "Admin Dashboard" })).toBeDefined();
+    });
+
+    it("http://manager.localhost:5173/ opens existing ManagerLoginPage when unauthenticated", async () => {
+      setTestHostname("manager.localhost");
+      renderAppWithRouter("/");
+      expect(await screen.findByText(/Plant Operations Workspace/i)).toBeDefined();
+      expect(screen.getByRole("button", { name: /Sign In to Operations Workspace/i })).toBeDefined();
+    });
+
+    it("http://manager.localhost:5173/ opens existing ManagerDashboardPage when authenticated Manager", async () => {
+      setTestHostname("manager.localhost");
+      renderAppWithRouter("/", "manager");
+      expect(await screen.findByRole("heading", { name: "Manager Dashboard" })).toBeDefined();
+    });
+
+    it("http://localhost:5173/ opens existing PortalSelectionPage when unauthenticated", async () => {
+      setTestHostname("localhost");
+      renderAppWithRouter("/");
+      expect(await screen.findByRole("heading", { name: /Select Workspace Portal/i })).toBeDefined();
+    });
+
+    it("cross-subdomain redirect from admin.localhost to manager.localhost preserves local port and path", () => {
+      setTestHostname("admin.localhost");
+      renderAppWithRouter("/manager/operations?line=A#status");
+      expect(redirectedUrl).toMatch(/^http:\/\/manager\.localhost(:\d+)?\/manager\/operations\?line=A#status$/);
+    });
+  });
 });

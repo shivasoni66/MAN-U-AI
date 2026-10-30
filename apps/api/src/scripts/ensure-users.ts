@@ -36,6 +36,18 @@ async function ensureUsers() {
       password: "OperatorPassword123!",
       role: "viewer",
     },
+    {
+      name: "System Administrator",
+      email: "admin@gmail.com",
+      password: "Admin@123",
+      role: "admin",
+    },
+    {
+      name: "Operations Manager",
+      email: "manager@gmail.com",
+      password: "Manager@123",
+      role: "manager",
+    },
   ];
 
   for (const acc of accounts) {
@@ -62,11 +74,10 @@ async function ensureUsers() {
   }
 
   await mongoose.disconnect();
-  console.log("All demo accounts ready.");
+  console.log("All accounts ready.");
 }
 
 ensureUsers().catch((err) => {
   console.error("Failed to ensure users:", err);
   process.exit(1);
 });
-
