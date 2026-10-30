@@ -28,8 +28,41 @@ jobs:
     name: Build & Deploy Admin to Cloudflare Pages
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    if: github.ref == 'refs/heads/main'
 
     steps:
+      - name: Production branch guard
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::Production branch guard failed: Deployments to production Cloudflare Pages are strictly restricted to refs/heads/main. Current ref is '${{ github.ref }}'."
+            exit 1
+          fi
+
+      - name: Validate Cloudflare deployment prerequisites
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_PROJECT_NAME: ${{ vars.CLOUDFLARE_ADMIN_PAGES_PROJECT }}
+        run: |
+          MISSING=0
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::Required secret 'CLOUDFLARE_API_TOKEN' is missing or empty in GitHub Repository Secrets."
+            MISSING=1
+          fi
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Required secret 'CLOUDFLARE_ACCOUNT_ID' is missing or empty in GitHub Repository Secrets."
+            MISSING=1
+          fi
+          if [ -z "$CLOUDFLARE_PROJECT_NAME" ]; then
+            echo "::error::Required variable 'CLOUDFLARE_ADMIN_PAGES_PROJECT' is missing or empty in GitHub Repository Variables. Silent fallbacks are disabled. You must configure the verified Cloudflare Pages project name."
+            MISSING=1
+          fi
+          if [ "$MISSING" -eq 1 ]; then
+            echo "Deployment prerequisites validation failed. Please configure missing secrets and variables in GitHub Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          echo "Prerequisites verified: Project name is '$CLOUDFLARE_PROJECT_NAME', and Cloudflare credentials are provided."
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -50,23 +83,23 @@ jobs:
       - name: Validate build output
         run: |
           if [ ! -d "apps/admin/dist" ]; then
-            echo "Error: Directory apps/admin/dist does not exist"
+            echo "::error::Build verification failed: Directory apps/admin/dist does not exist"
             exit 1
           fi
           if [ ! -f "apps/admin/dist/index.html" ]; then
-            echo "Error: apps/admin/dist/index.html is missing"
+            echo "::error::Build verification failed: apps/admin/dist/index.html is missing"
             exit 1
           fi
           echo "Build output validated: apps/admin/dist ready for deployment"
 
       - name: Deploy to Cloudflare Pages via Wrangler
         run: |
-          PROJECT_NAME="${{ vars.CLOUDFLARE_ADMIN_PAGES_PROJECT || 'manuai-admin' }}"
-          echo "Deploying to Cloudflare Pages project: $PROJECT_NAME (branch: main)"
-          pnpm dlx wrangler pages deploy apps/admin/dist \
-            --project-name="$PROJECT_NAME" \
+          echo "Deploying to Cloudflare Pages project: $CLOUDFLARE_PROJECT_NAME (branch: main)"
+          pnpm dlx wrangler@4.156.0 pages deploy apps/admin/dist \
+            --project-name="$CLOUDFLARE_PROJECT_NAME" \
             --branch=main \
             --commit-dirty=true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_PROJECT_NAME: ${{ vars.CLOUDFLARE_ADMIN_PAGES_PROJECT }}
