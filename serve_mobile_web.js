@@ -7,6 +7,14 @@ const PORT = 8080;
 const WEB_ROOT = path.join(__dirname, 'apps', 'mobile', 'build', 'web');
 const TARGET_API_HOST = process.env.PROXY_TARGET_HOST || 'man-u-ai.onrender.com';
 
+process.on('uncaughtException', (err) => {
+  console.error('[Process Uncaught Exception]:', err.message || err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[Process Unhandled Rejection]:', reason);
+});
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
@@ -24,6 +32,14 @@ const MIME_TYPES = {
 };
 
 const server = http.createServer((req, res) => {
+  req.on('error', (err) => {
+    console.error('[Client Request Error]:', err.message);
+  });
+
+  res.on('error', (err) => {
+    console.error('[Server Response Error]:', err.message);
+  });
+
   // Global CORS and cross-origin headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
@@ -51,26 +67,43 @@ const server = http.createServer((req, res) => {
         headers: proxyHeaders,
       },
       (proxyRes) => {
+        proxyRes.on('error', (err) => {
+          console.error('[Proxy Response Stream Error]:', err.message);
+          if (!res.headersSent) {
+            res.writeHead(502, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false, error: { code: 'BAD_GATEWAY', message: err.message } }));
+          } else {
+            res.destroy();
+          }
+        });
+
         const responseHeaders = { ...proxyRes.headers };
         responseHeaders['access-control-allow-origin'] = '*';
         responseHeaders['access-control-allow-credentials'] = 'true';
-        res.writeHead(proxyRes.statusCode, responseHeaders);
+
+        if (!res.headersSent) {
+          res.writeHead(proxyRes.statusCode, responseHeaders);
+        }
         proxyRes.pipe(res);
       }
     );
 
     proxyReq.on('error', (err) => {
       console.error('[Mobile Web Proxy Error]:', err.message);
-      res.writeHead(502, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          success: false,
-          error: {
-            code: 'PROXY_GATEWAY_ERROR',
-            message: `Could not reach ${TARGET_API_HOST}: ${err.message}`,
-          },
-        })
-      );
+      if (!res.headersSent) {
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: {
+              code: 'PROXY_GATEWAY_ERROR',
+              message: `Could not reach ${TARGET_API_HOST}: ${err.message}`,
+            },
+          })
+        );
+      } else {
+        res.destroy();
+      }
     });
 
     req.pipe(proxyReq);
@@ -95,15 +128,20 @@ const server = http.createServer((req, res) => {
 
     fs.readFile(filePath, (readErr, content) => {
       if (readErr) {
-        res.writeHead(500, { 'Content-Type': 'text/plain' });
-        return res.end('Internal Server Error');
+        if (!res.headersSent) {
+          res.writeHead(500, { 'Content-Type': 'text/plain' });
+          res.end('Internal Server Error');
+        }
+        return;
       }
 
-      res.writeHead(200, {
-        'Content-Type': contentType,
-        'Cache-Control': 'no-cache',
-      });
-      res.end(content);
+      if (!res.headersSent) {
+        res.writeHead(200, {
+          'Content-Type': contentType,
+          'Cache-Control': 'no-cache',
+        });
+        res.end(content);
+      }
     });
   });
 });
