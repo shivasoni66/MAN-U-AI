@@ -7,6 +7,7 @@ import '../../../../core/theme/app_typography.dart';
 import '../../../../core/theme/widgets/terminal_components.dart';
 import '../../models/chat_message_model.dart';
 import '../../../tickets/repositories/ticket_repository.dart';
+import '../../../diagram/views/interactive_diagram_viewer_screen.dart';
 import 'citation_card.dart';
 import 'safety_preconditions_card.dart';
 
@@ -131,6 +132,293 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
                 fontWeight: FontWeight.w700,
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExplodedDiagramCard(BuildContext context) {
+    const diagramsList = [
+      {
+        'id': 'FIG-CONVEYOR-BELT-A61',
+        'title': 'Conveyor Belt A61',
+        'subtitle': 'Bulk Transport & Optical Inspection',
+        'badge': '3D SIMREADY',
+        'pins': '7 PINS',
+        'image': 'assets/images/conveyor_belt_a61.png',
+        'networkUrl': 'http://localhost:4000/static/diagrams/conveyor_belt_a61.png',
+      },
+      {
+        'id': 'FIG-TURBOCOMPRESSOR-B01',
+        'title': 'Turbocompressor B01',
+        'subtitle': 'Titanium Impeller & Gas Turbine',
+        'badge': '3D SIMREADY',
+        'pins': '6 PINS',
+        'image': 'assets/images/turbocompressor_b01.png',
+        'networkUrl': 'http://localhost:4000/static/diagrams/turbocompressor_b01.png',
+      },
+      {
+        'id': 'FIG-P102-EXPLODED',
+        'title': 'Slurry Pump P-102',
+        'subtitle': 'Centrifugal Power & Wet End',
+        'badge': 'CAD SCHEMATIC',
+        'pins': '6 PINS',
+        'image': null,
+        'networkUrl': null,
+      },
+    ];
+
+    const partsList = [
+      {'code': '01', 'name': 'Drive Motor & Gearbox', 'query': 'What is the torque spec and maintenance procedure for the Conveyor Belt A61 drive motor and gearbox?'},
+      {'code': '02', 'name': 'Idler Rollers (x36)', 'query': 'How are the 36 idler rollers inspected and aligned on Conveyor Belt A61?'},
+      {'code': '03', 'name': 'Vulcanized Belt', 'query': 'What is the replacement and tensioning procedure for the vulcanized conveyor belt?'},
+      {'code': '04', 'name': 'Optical Scanner', 'query': 'What are the cleaning and calibration steps for the optical inspection scanner?'},
+      {'code': '05', 'name': 'E-Stop Console', 'query': 'Where is the emergency stop located and what are the recovery steps after E-Stop engagement?'},
+      {'code': '06', 'name': 'Turbocompressor B01', 'query': 'What is the inspection procedure for the Turbocompressor B01 titanium impeller?'},
+      {'code': '07', 'name': 'Auto Tensioner', 'query': 'What is the operating pressure range for the pneumatic belt tensioner?'},
+    ];
+
+    return Container(
+      margin: const EdgeInsets.only(top: 14.0),
+      padding: const EdgeInsets.all(12.0),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceMuted,
+        borderRadius: BorderRadius.circular(6.0),
+        border: Border.all(color: AppColors.border, width: 1.0),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 4.0,
+                height: 16.0,
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(2.0),
+                ),
+              ),
+              const SizedBox(width: 8.0),
+              Expanded(
+                child: Text(
+                  'EXPLODED 3D DIAGRAMS & SIMULATIONS',
+                  style: AppTypography.labelMd.copyWith(
+                    color: Colors.white,
+                    fontSize: 10.5,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+              const BadgePill(
+                label: 'MULTIPLE 3D ASSETS',
+                color: AppColors.accentCategorical5,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10.0),
+
+          // Horizontal Scroll Section for Multiple Diagrams
+          SizedBox(
+            height: 150.0,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: diagramsList.length,
+              separatorBuilder: (context, index) => const SizedBox(width: 10.0),
+              itemBuilder: (context, idx) {
+                final d = diagramsList[idx];
+                final isTurbocompressor = d['id'] == 'FIG-TURBOCOMPRESSOR-B01';
+
+                return GestureDetector(
+                  key: Key('diagram_preview_tap_target_${d['id']}'),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => InteractiveDiagramViewerScreen(
+                          figureId: d['id']!,
+                          title: '${d['title']} Exploded Assembly',
+                          onAskAboutPart: widget.onSendMessage,
+                        ),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    width: 230.0,
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(6.0),
+                      border: Border.all(color: AppColors.border, width: 1.0),
+                    ),
+                    child: Stack(
+                      children: [
+                        Center(
+                          child: d['image'] != null
+                              ? Image.asset(
+                                  d['image']!,
+                                  height: 120.0,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) => Image.network(
+                                    d['networkUrl']!,
+                                    height: 120.0,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (context, error2, stackTrace2) => Icon(
+                                      isTurbocompressor
+                                          ? Icons.cyclone_rounded
+                                          : Icons.precision_manufacturing_rounded,
+                                      color: AppColors.onSurfaceVariant,
+                                      size: 32.0,
+                                    ),
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.settings_input_composite_rounded,
+                                  color: AppColors.primary,
+                                  size: 40.0,
+                                ),
+                        ),
+                        // Top Label
+                        Positioned(
+                          top: 8.0,
+                          left: 8.0,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 3.0),
+                            decoration: BoxDecoration(
+                              color: AppColors.surface.withValues(alpha: 0.85),
+                              borderRadius: BorderRadius.circular(3.0),
+                              border: Border.all(color: AppColors.border, width: 1.0),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const StatusDot(color: AppColors.primary, size: 6.0),
+                                const SizedBox(width: 5.0),
+                                Text(
+                                  d['title']!.toUpperCase(),
+                                  style: AppTypography.caption.copyWith(
+                                    fontSize: 9.0,
+                                    color: AppColors.onSurface,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        // Bottom Badge
+                        Positioned(
+                          bottom: 8.0,
+                          right: 8.0,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 3.0),
+                            decoration: BoxDecoration(
+                              color: AppColors.surface.withValues(alpha: 0.90),
+                              borderRadius: BorderRadius.circular(4.0),
+                              border: Border.all(color: AppColors.primary.withValues(alpha: 0.4), width: 1.0),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.touch_app_rounded, size: 11.0, color: AppColors.primary),
+                                const SizedBox(width: 4.0),
+                                Text(
+                                  d['pins']!,
+                                  style: AppTypography.caption.copyWith(
+                                    fontSize: 9.0,
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 10.0),
+          // Parts chips heading
+          Row(
+            children: [
+              Text(
+                'COMPONENTS & PARTS LIST (TAP TO QUERY)',
+                style: AppTypography.caption.copyWith(
+                  color: AppColors.onSurfaceVariant,
+                  fontSize: 10.0,
+                  letterSpacing: 0.6,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6.0),
+          // Parts chips
+          Wrap(
+            spacing: 6.0,
+            runSpacing: 6.0,
+            children: partsList.map((part) {
+              return InkWell(
+                key: Key('part_chip_${part['code']}'),
+                onTap: () {
+                  if (widget.onSendMessage != null) {
+                    widget.onSendMessage!(part['query']!);
+                  }
+                },
+                borderRadius: BorderRadius.circular(4.0),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceAlt,
+                    borderRadius: BorderRadius.circular(4.0),
+                    border: Border.all(color: AppColors.border, width: 1.0),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        part['code']!,
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 10.0,
+                        ),
+                      ),
+                      const SizedBox(width: 4.0),
+                      Text(
+                        part['name']!,
+                        style: AppTypography.caption.copyWith(
+                          color: AppColors.onSurface,
+                          fontSize: 10.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 10.0),
+          // Machined button to open interactive exploded viewer
+          MachinedPrimaryButton(
+            buttonKey: const Key('open_exploded_diagram_button'),
+            label: 'Open Interactive Exploded Diagram',
+            icon: Icons.layers_rounded,
+            height: 40.0,
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => InteractiveDiagramViewerScreen(
+                    figureId: 'FIG-CONVEYOR-BELT-A61',
+                    title: 'Conveyor Belt A61 Exploded Assembly',
+                    onAskAboutPart: widget.onSendMessage,
+                  ),
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -312,6 +600,49 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
                     ),
                   ),
 
+                  // Citations Drawer Section
+                  if (citations.isNotEmpty) ...[
+                    const SizedBox(height: 12.0),
+                    const Divider(color: AppColors.border, height: 1.0),
+                    const SizedBox(height: 8.0),
+                    InkWell(
+                      key: const Key('toggle_citations_button'),
+                      onTap: () => setState(() => _showCitations = !_showCitations),
+                      borderRadius: BorderRadius.circular(6.0),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4.0),
+                        child: Row(
+                          children: [
+                            BadgePill(
+                              label: '${citations.length} VERIFIED CITATIONS',
+                              color: AppColors.accentCategorical2,
+                              icon: Icons.menu_book_rounded,
+                            ),
+                            const Spacer(),
+                            Icon(
+                              _showCitations
+                                  ? Icons.expand_less_rounded
+                                  : Icons.expand_more_rounded,
+                              size: 18.0,
+                              color: AppColors.onSurfaceVariant,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_showCitations) ...[
+                      const SizedBox(height: 8.0),
+                      ...citations.asMap().entries.map((entry) => CitationCard(
+                            key: Key('citation_card_${entry.key}'),
+                            citation: entry.value,
+                            onAskAboutFigure: widget.onSendMessage,
+                          )),
+                    ],
+                  ],
+
+                  // SimReady Exploded Diagrams & Simulations Card (Multi-Asset Scroll)
+                  _buildExplodedDiagramCard(context),
+
                   // Refusal-to-Fix Loop Card (One-Tap Request Documentation)
                   if (hasTicketSuggestion) ...[
                     const SizedBox(height: 16.0),
@@ -397,46 +728,6 @@ class _ChatBubbleState extends ConsumerState<ChatBubble> {
                         ],
                       ),
                     ),
-                  ],
-
-                  // Citations Drawer Section
-                  if (citations.isNotEmpty) ...[
-                    const SizedBox(height: 12.0),
-                    const Divider(color: AppColors.border, height: 1.0),
-                    const SizedBox(height: 8.0),
-                    InkWell(
-                      key: const Key('toggle_citations_button'),
-                      onTap: () => setState(() => _showCitations = !_showCitations),
-                      borderRadius: BorderRadius.circular(6.0),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4.0),
-                        child: Row(
-                          children: [
-                            BadgePill(
-                              label: '${citations.length} VERIFIED CITATIONS',
-                              color: AppColors.accentCategorical2,
-                              icon: Icons.menu_book_rounded,
-                            ),
-                            const Spacer(),
-                            Icon(
-                              _showCitations
-                                  ? Icons.expand_less_rounded
-                                  : Icons.expand_more_rounded,
-                              size: 18.0,
-                              color: AppColors.onSurfaceVariant,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    if (_showCitations) ...[
-                      const SizedBox(height: 8.0),
-                      ...citations.asMap().entries.map((entry) => CitationCard(
-                            key: Key('citation_card_${entry.key}'),
-                            citation: entry.value,
-                            onAskAboutFigure: widget.onSendMessage,
-                          )),
-                    ],
                   ],
                 ],
               ),

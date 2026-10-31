@@ -24,6 +24,8 @@ chatRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res: Respons
   const message = (parsed.data.message || parsed.data.content)!.trim();
   const conversationId = parsed.data.conversationId;
   const equipmentId = parsed.data.equipmentId;
+  const preferredLanguage = parsed.data.preferredLanguage;
+  const simpler = parsed.data.simpler;
   const requestId = (req as any).id;
 
   const userContext = req.user
@@ -106,7 +108,8 @@ chatRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res: Respons
       userContext,
       conversationId,
       resolvedEquipmentId,
-      requestId
+      requestId,
+      { preferredLanguage, simpler }
     );
 
     if (isConnectedToMongo && conversationId) {
@@ -120,6 +123,7 @@ chatRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res: Respons
           conversationId,
           role: "assistant",
           content: result.answer,
+          workerAnswer: result.workerAnswer,
           citations: result.citations,
           warningLevel: result.warningLevel,
           safetyPreconditions: result.safetyPreconditions,
@@ -133,10 +137,12 @@ chatRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res: Respons
       }
     }
 
+    if (res.headersSent) return;
     return res.json({
       success: true,
       data: {
         answer: result.answer,
+        workerAnswer: result.workerAnswer,
         citations: result.citations,
         warningLevel: result.warningLevel,
         confidenceScore: result.confidenceScore,
@@ -155,6 +161,7 @@ chatRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res: Respons
       userRole: req.user?.role,
     });
 
+    if (res.headersSent) return;
     const status = errorInfo.httpStatus || 500;
     const retryAfter = (err as any)?.retryAfterSeconds;
     const errorPayload: Record<string, any> = {

@@ -25,12 +25,14 @@ import {
 } from "lucide-react";
 import { chatApi, conversationsApi, feedbackApi, equipmentApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { CitationDTO } from "@man-u-ai/shared";
+import type { CitationDTO, WorkerResponseDTO, WorkerLanguage } from "@man-u-ai/shared";
+import { WorkerAnswerCard } from "@/components/chat/WorkerAnswerCard";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  workerAnswer?: WorkerResponseDTO;
   citations?: CitationDTO[];
   warningLevel?: "none" | "caution" | "critical";
   timestamp: Date;
@@ -77,6 +79,14 @@ export function AssistantPage() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [selectedLanguage, setSelectedLanguage] = useState<WorkerLanguage>(() => {
+    return (localStorage.getItem("manuai_worker_lang") as WorkerLanguage) || "en";
+  });
+
+  const handleLanguageChange = (lang: WorkerLanguage) => {
+    setSelectedLanguage(lang);
+    localStorage.setItem("manuai_worker_lang", lang);
+  };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -125,6 +135,7 @@ export function AssistantPage() {
           id: m.id || m._id,
           role: m.role,
           content: m.content,
+          workerAnswer: m.workerAnswer,
           citations: m.citations,
           warningLevel: m.content?.toLowerCase().includes("critical") ? "critical" : m.citations?.length ? "caution" : "none",
           timestamp: new Date(m.createdAt || Date.now()),
@@ -169,7 +180,7 @@ export function AssistantPage() {
     adjustTextarea();
   }, [input, adjustTextarea]);
 
-  const handleSend = useCallback(async (textToSend?: string) => {
+  const handleSend = useCallback(async (textToSend?: string, isSimpler?: boolean) => {
     const content = (textToSend ?? input).trim();
     if (!content || isLoading) return;
 
@@ -199,13 +210,20 @@ export function AssistantPage() {
       setLocalMessages((prev) => [...prev, userMsg]);
 
       // 3. Send to real backend RAG pipeline (/api/v1/chat)
-      const res = await chatApi.ask(activeConvId || "default-session", content, activeEquipmentId || undefined);
+      const res = await chatApi.ask(
+        activeConvId || "default-session",
+        content,
+        activeEquipmentId || undefined,
+        selectedLanguage,
+        isSimpler
+      );
 
       if (res.data?.success && res.data.data) {
         const assistantMsg: Message = {
           id: `asst-${Date.now()}`,
           role: "assistant",
           content: res.data.data.answer,
+          workerAnswer: res.data.data.workerAnswer,
           citations: res.data.data.citations || [],
           warningLevel: res.data.data.warningLevel || "none",
           timestamp: new Date(),
@@ -268,7 +286,7 @@ export function AssistantPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, conversationId, activeEquipmentId, isEquipmentMismatch, navigate, queryClient]);
+  }, [input, isLoading, conversationId, activeEquipmentId, isEquipmentMismatch, navigate, queryClient, selectedLanguage]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -336,6 +354,15 @@ export function AssistantPage() {
     } catch {
       // Ignored
     }
+  };
+
+  const handleAskSimpler = (msg: Message) => {
+    const lastUserMsg = activeMessages
+      .slice(0, activeMessages.indexOf(msg))
+      .reverse()
+      .find((m) => m.role === "user");
+    const queryToResend = lastUserMsg ? lastUserMsg.content : "Explain simpler";
+    handleSend(queryToResend, true);
   };
 
   return (
@@ -419,6 +446,7 @@ export function AssistantPage() {
                 onSpeak={speakMessage}
                 isSpeaking={isSpeaking}
                 onFeedback={handleFeedback}
+                onAskSimpler={() => handleAskSimpler(message)}
               />
             ))}
 
@@ -459,6 +487,26 @@ export function AssistantPage() {
           )}
 
           <div className="relative flex flex-col rounded-xl border border-hairline bg-surface-2 shadow-elevated focus-within:border-primary/60 transition-colors">
+            <div className="flex items-center justify-between px-3 pt-2.5 pb-1.5 border-b border-hairline/60 text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="text-2xs font-bold text-ink-tertiary uppercase tracking-wider">Worker Language:</span>
+                {(["en", "hi", "hinglish"] as const).map((lang) => (
+                  <button
+                    key={lang}
+                    type="button"
+                    onClick={() => handleLanguageChange(lang)}
+                    className={cn(
+                      "px-2.5 py-0.5 rounded text-xs font-semibold transition-all",
+                      selectedLanguage === lang
+                        ? "bg-primary text-white shadow-sm"
+                        : "bg-surface-3 text-ink-muted hover:text-ink hover:bg-surface-1"
+                    )}
+                  >
+                    {lang === "en" ? "English" : lang === "hi" ? "हिंदी" : "Hinglish"}
+                  </button>
+                ))}
+              </div>
+            </div>
             {/* Text area */}
             <textarea
               ref={inputRef}

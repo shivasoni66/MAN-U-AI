@@ -41,3 +41,11 @@ coverage/
 # Uploads / storage (local dev)
 uploads/
 .uploads/
+
+
+# 3D assets & simulation models (downloaded via CLI / HF)
+simready-assets*/
+*.usda
+*.usdc
+*.usd
+*.usdz

@@ -169,8 +169,20 @@ export const equipmentApi = {
 
 // ── Chat (RAG) ────────────────────────────────────────────────────────────
 export const chatApi = {
-  ask: (conversationId: string, message: string, equipmentId?: string) =>
-    apiClient.post("/chat", { conversationId, message, equipmentId }),
+  ask: (
+    conversationId: string,
+    message: string,
+    equipmentId?: string,
+    preferredLanguage?: "en" | "hi" | "hinglish",
+    simpler?: boolean
+  ) =>
+    apiClient.post("/chat", {
+      conversationId,
+      message,
+      equipmentId,
+      preferredLanguage,
+      simpler,
+    }),
 };
 
 // ── Feedback ─────────────────────────────────────────────────────────────

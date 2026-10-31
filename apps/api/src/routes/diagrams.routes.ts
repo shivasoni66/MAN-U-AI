@@ -1,4 +1,6 @@
 import { Router, Request, Response } from "express";
+import path from "path";
+import fs from "fs";
 import { requireAuth } from "../middlewares/auth";
 import { diagramService } from "../services/diagram.service";
 import {
@@ -8,6 +10,79 @@ import {
 } from "@man-u-ai/shared";
 
 export const diagramRouter: Router = Router();
+
+// Stream diagram figure image (e.g. SimReady Conveyor Belt A61, Turbocompressor B01)
+diagramRouter.get("/:figureId/image", async (req: Request, res: Response) => {
+  // Always set CORS + cache headers before any response
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Cache-Control", "public, max-age=86400");
+
+  try {
+    const figureId = String(req.params.figureId);
+    const isConveyorA61 =
+      figureId.toUpperCase().includes("CONVEYOR") ||
+      figureId.toUpperCase().includes("A61") ||
+      figureId === "FIG-CONVEYOR-BELT-A61";
+
+    const isTurbocompressor =
+      figureId.toUpperCase().includes("TURBO") ||
+      figureId.toUpperCase().includes("COMPRESSOR") ||
+      figureId.toUpperCase().includes("B01") ||
+      figureId === "FIG-TURBOCOMPRESSOR-B01";
+
+    if (isConveyorA61) {
+      // Primary: bundled alongside API in public/diagrams/
+      const candidatePaths = [
+        path.join(__dirname, "..", "..", "public", "diagrams", "conveyor_belt_a61.png"),
+        path.join(process.cwd(), "public", "diagrams", "conveyor_belt_a61.png"),
+        path.join(process.cwd(), "simready-assets-653d91e1", "conveyor_belt_a61", "simready_usd", ".thumbs", "sm_conveyor_belt_a61_01_thumbnail.png"),
+        path.join(process.cwd(), "..", "simready-assets-653d91e1", "conveyor_belt_a61", "simready_usd", ".thumbs", "sm_conveyor_belt_a61_01_thumbnail.png"),
+        path.join(process.cwd(), "..", "..", "simready-assets-653d91e1", "conveyor_belt_a61", "simready_usd", ".thumbs", "sm_conveyor_belt_a61_01_thumbnail.png"),
+        "C:\\MAN-U-AI\\MAN-U-AI\\simready-assets-653d91e1\\conveyor_belt_a61\\simready_usd\\.thumbs\\sm_conveyor_belt_a61_01_thumbnail.png",
+      ];
+
+      const imagePath = candidatePaths.find((p) => {
+        try { return fs.existsSync(p); } catch { return false; }
+      });
+
+      if (imagePath) {
+        res.setHeader("Content-Type", "image/png");
+        return fs.createReadStream(imagePath).pipe(res);
+      }
+    }
+
+    if (isTurbocompressor) {
+      const candidatePaths = [
+        path.join(__dirname, "..", "..", "public", "diagrams", "turbocompressor_b01.png"),
+        path.join(process.cwd(), "public", "diagrams", "turbocompressor_b01.png"),
+        path.join(process.cwd(), "simready-assets-653d91e1", "engineComponent_turbocompressor_b01", "simready_usd", ".thumbs", "sm_engineComponent_turbocompressor_b01_01_thumbnail.png"),
+        path.join(process.cwd(), "..", "simready-assets-653d91e1", "engineComponent_turbocompressor_b01", "simready_usd", ".thumbs", "sm_engineComponent_turbocompressor_b01_01_thumbnail.png"),
+        "C:\\MAN-U-AI\\MAN-U-AI\\simready-assets-653d91e1\\engineComponent_turbocompressor_b01\\simready_usd\\.thumbs\\sm_engineComponent_turbocompressor_b01_01_thumbnail.png",
+      ];
+
+      const imagePath = candidatePaths.find((p) => {
+        try { return fs.existsSync(p); } catch { return false; }
+      });
+
+      if (imagePath) {
+        res.setHeader("Content-Type", "image/png");
+        return fs.createReadStream(imagePath).pipe(res);
+      }
+    }
+
+    return res.status(404).json({
+      success: false,
+      error: { code: "FIGURE_NOT_FOUND", message: `Figure image ${figureId} not found` },
+    });
+  } catch (err: any) {
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        error: { code: "IMAGE_STREAM_ERROR", message: err.message },
+      });
+    }
+  }
+});
 
 // Get diagram annotations/hotspots for a figure
 diagramRouter.get("/:figureId", requireAuth, async (req: Request, res: Response) => {

@@ -15,6 +15,7 @@ export interface GenerationOptions {
   topP?: number;
   topK?: number;
   systemInstruction?: string;
+  responseMimeType?: string;
   images?: VisualInputPart[];
 }
 
@@ -29,6 +30,9 @@ export function buildModelGenerationConfig(
   options?: GenerationOptions
 ): Record<string, any> | undefined {
   const config: Record<string, any> = {};
+  if (options?.responseMimeType) {
+    config.responseMimeType = options.responseMimeType;
+  }
 
   if (options?.systemInstruction) {
     config.systemInstruction = options.systemInstruction;
@@ -290,6 +294,7 @@ export class GeminiService {
   private ai: GoogleGenAI | null = null;
   public client: any = null;
   private lastProvider: "live-gemini" | "deterministic-fallback" = "deterministic-fallback";
+  private embeddingCache = new Map<string, { embedding: number[]; timestamp: number }>();
 
   constructor() {
     if (env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 5) {
@@ -369,6 +374,16 @@ export class GeminiService {
       Boolean((this.ai as any)?.models?.embedContent?._isMockFunction);
 
     const isUnderVitest = Boolean(process.env.VITEST);
+
+    // Fast-path in-memory LRU embedding cache (valid for 15 minutes)
+    const cacheKey = `${env.GEMINI_EMBEDDING_MODEL}:${text.trim()}`;
+    if (!isMock) {
+      const cached = this.embeddingCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < 15 * 60 * 1000) {
+        return cached.embedding;
+      }
+    }
+
     if (this.isLiveClientConfigured() && this.ai && (!isUnderVitest || isMock)) {
       try {
         const response = await this.ai.models.embedContent({
@@ -381,6 +396,13 @@ export class GeminiService {
         const values = (response as any).embedding?.values || (response as any).embeddings?.[0]?.values;
         if (Array.isArray(values) && values.length === 768) {
           this.lastProvider = "live-gemini";
+          if (!isMock) {
+            if (this.embeddingCache.size > 1000) {
+              const oldestKey = this.embeddingCache.keys().next().value;
+              if (oldestKey) this.embeddingCache.delete(oldestKey);
+            }
+            this.embeddingCache.set(cacheKey, { embedding: values, timestamp: Date.now() });
+          }
           return values;
         }
       } catch (err) {
@@ -400,7 +422,15 @@ export class GeminiService {
 
     // Offline deterministic fallback is confined strictly to development/test environments
     this.lastProvider = "deterministic-fallback";
-    return generateDeterministicEmbedding(text, 768);
+    const fallbackVector = generateDeterministicEmbedding(text, 768);
+    if (!isMock) {
+      if (this.embeddingCache.size > 1000) {
+        const oldestKey = this.embeddingCache.keys().next().value;
+        if (oldestKey) this.embeddingCache.delete(oldestKey);
+      }
+      this.embeddingCache.set(cacheKey, { embedding: fallbackVector, timestamp: Date.now() });
+    }
+    return fallbackVector;
   }
 
   /**
@@ -465,7 +495,7 @@ export class GeminiService {
           throw customErr;
         }
         this.lastProvider = "deterministic-fallback";
-        return this.generateGroundedFallback(prompt);
+        return this.generateGroundedFallback(prompt, options);
       }
 
       let lastError: unknown = null;
@@ -509,7 +539,12 @@ export class GeminiService {
         const MAX_RETRIES = 1;
         for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
           try {
-            const response = await (this.ai!.models.generateContent as any)(payload);
+            const response = await Promise.race([
+              (this.ai!.models.generateContent as any)(payload),
+              new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error(`Timeout waiting for model '${candidateModel}' after 14000ms`)), 14000)
+              ),
+            ]);
 
             const text = response.text;
             if (text && text.trim().length > 0) {
@@ -547,7 +582,7 @@ export class GeminiService {
             // Apply cooldown via modelQuotaTracker now that the permitted retry has failed or was ineligible
             lastAnalysis = modelQuotaTracker.recordFailure(candidateModel, err);
             console.warn(
-              `[GeminiService] Model '${candidateModel}' failed (${lastAnalysis.category}): ${lastAnalysis.safeMessage}. Trying next candidate model...`
+              `[GeminiService] Model '${candidateModel}' failed (${lastAnalysis.category}): ${lastAnalysis.safeMessage} [err: ${safeErrorMsg(err)}]. Trying next candidate model...`
             );
             break;
           }
@@ -603,7 +638,7 @@ export class GeminiService {
     }
 
     this.lastProvider = "deterministic-fallback";
-    return this.generateGroundedFallback(prompt);
+    return this.generateGroundedFallback(prompt, options);
   }
 
   /**
@@ -685,7 +720,54 @@ export class GeminiService {
     throw ocrErr;
   }
 
-  private generateGroundedFallback(prompt: string): string {
+  private generateGroundedFallback(prompt: string, options?: GenerationOptions): string {
+    if (options?.responseMimeType === "application/json" || prompt.includes("REQUIRED JSON OUTPUT SCHEMA")) {
+      const langMatch = prompt.match(/"language":\s*"([^"]+)"/);
+      const targetLang = (langMatch ? langMatch[1] : "en") as any;
+
+      const evidenceMatch = prompt.match(/\[EVIDENCE \d+ \| CHUNK_ID:\s*([^\]]+)\]\s*Source:\s*"([^"]+)"\s*\(Rev:\s*([^\)]+)\),\s*Page\s*(\d+),\s*Section:\s*"([^"]+)"[^\n]*\nContent:\s*"([^"]+)"/);
+      if (evidenceMatch) {
+        const [, chunkId, docTitle, rev, pageStr, section, text] = evidenceMatch;
+        const cleanText = text.replace(/\\"/g, '"');
+        const firstSentence = cleanText.split(".")[0].replace(/\n/g, " ").trim();
+        return JSON.stringify({
+          status: "answered",
+          language: targetLang,
+          headline: firstSentence.slice(0, 70),
+          warnings: [],
+          steps: [
+            {
+              n: 1,
+              text: `Refer to ${docTitle} Section ${section} for operational specifications.`,
+              source_id: chunkId,
+            },
+          ],
+          values: [],
+          has_more_steps: false,
+          sources: [
+            {
+              document: docTitle,
+              version: rev,
+              page: parseInt(pageStr, 10) || 1,
+              section,
+            },
+          ],
+          follow_up: null,
+        });
+      }
+
+      return JSON.stringify({
+        status: "cannot_verify",
+        language: targetLang,
+        message: targetLang === "hi"
+          ? "यह अनुमोदित दस्तावेज़ों में पुष्टि नहीं हुआ। कृपया सुपरवाइज़र से पूछें।"
+          : targetLang === "hinglish"
+          ? "Ye approved documents mein confirm nahi hua. Please supervisor se pucho."
+          : "I can't confirm this from the approved documents. Please ask your supervisor.",
+        closest_sources: [],
+      });
+    }
+
     return `### [NOTICE: AI Generative Service Unavailable — Offline Documentation Mode]
 
 Live AI synthesis is currently unavailable in this environment.

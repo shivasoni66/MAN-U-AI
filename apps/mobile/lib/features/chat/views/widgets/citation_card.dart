@@ -169,7 +169,14 @@ class _CitationCardState extends State<CitationCard> {
                       label: 'TAP-THE-PART: EXPLODED VIEW',
                       icon: Icons.schema_rounded,
                       onPressed: () {
-                        _openInteractiveDiagram('FIG-P102-EXPLODED');
+                        final figId = c.figures.isNotEmpty
+                            ? c.figures.first
+                            : (c.documentTitle.toLowerCase().contains('conveyor') ||
+                                    c.excerpt.toLowerCase().contains('conveyor') ||
+                                    c.excerpt.toLowerCase().contains('belt')
+                                ? 'FIG-CONVEYOR-BELT-A61'
+                                : 'FIG-P102-EXPLODED');
+                        _openInteractiveDiagram(figId);
                       },
                     ),
                   ],

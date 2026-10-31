@@ -3,6 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import compression from "compression";
 import rateLimit from "express-rate-limit";
+import path from "path";
 import { env } from "./config/env";
 import { authRouter } from "./routes/auth.routes";
 import { documentsRouter } from "./routes/documents.routes";
@@ -123,6 +124,13 @@ app.use(
 app.use(compression());
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: true, limit: "25mb" }));
+
+// Serve SimReady and diagram assets as static files
+app.use("/static/diagrams", (req: Request, res: Response, next: NextFunction) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  next();
+}, express.static(path.join(__dirname, "..", "public", "diagrams")));
 
 // Rate limiting
 const limiter = rateLimit({

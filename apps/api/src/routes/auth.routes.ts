@@ -158,6 +158,13 @@ authRouter.post("/login", authLimiter, async (req: Request, res: Response) => {
           role: "engineer" as UserRole,
         },
         {
+          id: "demo-engineer-alias-id",
+          name: "Alex Mercer (Engineer)",
+          email: "engineer@plant.io",
+          password: "EngineerPassword123!",
+          role: "engineer" as UserRole,
+        },
+        {
           id: "demo-operator-id",
           name: "Sam Taylor (Operator)",
           email: "operator@plant.io",

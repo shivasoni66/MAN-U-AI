@@ -156,6 +156,7 @@ export interface MessageDTO {
     reason: string;
   };
   expandedTerms?: string[];
+  workerAnswer?: WorkerResponseDTO;
   createdAt: string;
 }
 
@@ -174,6 +175,8 @@ export const SendMessageSchema = z.object({
   message: z.string().trim().min(1, "Message text is required").max(8000, "Message text too long").optional(),
   conversationId: z.string().trim().max(100).optional(),
   equipmentId: z.string().trim().max(100).optional(),
+  preferredLanguage: z.enum(["en", "hi", "hinglish"]).optional(),
+  simpler: z.boolean().optional(),
   attachmentIds: z.array(z.string().trim().min(1, "Attachment ID cannot be empty").max(100, "Attachment ID too long")).max(20, "Cannot exceed 20 attachments").optional().default([]),
 }).refine((data) => Boolean((data.content && data.content.trim()) || (data.message && data.message.trim())), {
   message: "Message text is required",
@@ -457,3 +460,63 @@ export const PaginationSchema = z.object({
   page: z.coerce.number().int().positive().optional().default(1),
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
 });
+
+// ─── Worker-Friendly Structured Answers ──────────────────────────────────────
+
+export type WorkerLanguage = "en" | "hi" | "hinglish";
+
+export const WorkerWarningSchema = z.object({
+  text: z.string(),
+  source_id: z.string().optional(),
+});
+export type WorkerWarningDTO = z.infer<typeof WorkerWarningSchema>;
+
+export const WorkerStepSchema = z.object({
+  n: z.number(),
+  text: z.string(),
+  source_id: z.string().optional(),
+});
+export type WorkerStepDTO = z.infer<typeof WorkerStepSchema>;
+
+export const WorkerValueSchema = z.object({
+  label: z.string(),
+  value: z.string(),
+  unit: z.string().optional().default(""),
+  source_id: z.string().optional(),
+});
+export type WorkerValueDTO = z.infer<typeof WorkerValueSchema>;
+
+export const WorkerSourceSchema = z.object({
+  document: z.string(),
+  version: z.string().optional(),
+  page: z.number().optional().default(1),
+  section: z.string().optional(),
+});
+export type WorkerSourceDTO = z.infer<typeof WorkerSourceSchema>;
+
+export const WorkerAnswerSchema = z.object({
+  status: z.literal("answered"),
+  language: z.enum(["en", "hi", "hinglish"]).default("en"),
+  headline: z.string(),
+  warnings: z.array(WorkerWarningSchema).default([]),
+  steps: z.array(WorkerStepSchema).default([]),
+  values: z.array(WorkerValueSchema).default([]),
+  has_more_steps: z.boolean().default(false),
+  all_steps: z.array(WorkerStepSchema).optional(),
+  sources: z.array(WorkerSourceSchema).default([]),
+  manual_text: z.string().optional(),
+  follow_up: z.string().nullable().optional(),
+  simpler_applied: z.boolean().optional(),
+});
+export type WorkerAnswerDTO = z.infer<typeof WorkerAnswerSchema>;
+
+export const WorkerCannotVerifySchema = z.object({
+  status: z.literal("cannot_verify"),
+  language: z.enum(["en", "hi", "hinglish"]).default("en"),
+  message: z.string(),
+  closest_sources: z.array(WorkerSourceSchema).optional().default([]),
+});
+export type WorkerCannotVerifyDTO = z.infer<typeof WorkerCannotVerifySchema>;
+
+export type WorkerResponseDTO = WorkerAnswerDTO | WorkerCannotVerifyDTO;
+

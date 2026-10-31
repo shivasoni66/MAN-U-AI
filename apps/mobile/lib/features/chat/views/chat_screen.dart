@@ -87,11 +87,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _showExplodedDiagram(BuildContext context) {
+    final selectedEq = ref.read(chatControllerProvider).selectedEquipment;
+    final isPump = selectedEq != null &&
+        (selectedEq.name.toUpperCase().contains('PUMP') ||
+            selectedEq.name.toUpperCase().contains('P-102') ||
+            selectedEq.name.toUpperCase().contains('SLURRY'));
+
+    final figureId = isPump ? 'FIG-P102-EXPLODED' : 'FIG-CONVEYOR-BELT-A61';
+    final title = isPump
+        ? 'P-102 Slurry Pump Exploded Assembly'
+        : 'Conveyor Belt A61 Exploded Assembly (SimReady)';
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => InteractiveDiagramViewerScreen(
-          figureId: 'FIG-P102-EXPLODED',
-          title: 'P-102 Slurry Pump Exploded Assembly',
+          figureId: figureId,
+          title: title,
           onAskAboutPart: (prompt) {
             ref.read(chatControllerProvider.notifier).sendMessage(prompt);
           },

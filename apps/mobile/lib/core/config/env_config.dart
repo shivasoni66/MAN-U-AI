@@ -92,10 +92,11 @@ class EnvConfig {
 
     if (isRelease) {
       final host = parsed.host.toLowerCase();
-      if (host == 'localhost' || host == '127.0.0.1' || host == '10.0.2.2') {
+      final isLocal = host == 'localhost' || host == '127.0.0.1';
+      if (!kIsWeb && (isLocal || host == '10.0.2.2')) {
         return 'Production builds cannot target local loopback or emulator addresses ($host).';
       }
-      if (parsed.scheme != 'https') {
+      if (!isLocal && parsed.scheme != 'https') {
         return 'Production builds require secure TLS (https://). Cleartext HTTP is forbidden in release.';
       }
     }
@@ -126,7 +127,16 @@ class EnvConfig {
       return emulatorApiBaseUrl;
     }
 
-    // 4. Default for production builds and physical devices:
+    // 4. Web browser environment: when served via local web server (e.g. localhost:8080),
+    // connect through the web server's same-origin proxy to eliminate cross-origin CORS blocks
+    if (kIsWeb) {
+      final origin = Uri.base.origin;
+      if (origin.isNotEmpty && origin != 'null' && (origin.contains('localhost') || origin.contains('127.0.0.1'))) {
+        return normalizeApiBaseUrl('$origin/api/v1');
+      }
+    }
+
+    // 5. Default for production builds and physical devices:
     // Uses the verified HTTPS deployed API base URL.
     // 10.0.2.2 and 127.0.0.1 are never used as default physical or production URLs.
     return productionApiBaseUrl;

@@ -342,7 +342,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       children: [
                         _buildQuickRoleChip(
                           label: 'LEAD ENGINEER',
-                          email: 'alex.mercer@plant.io',
+                          email: 'engineer@plant.io',
                           password: 'EngineerPassword123!',
                           dotColor: AppColors.accentCategorical2,
                         ),
