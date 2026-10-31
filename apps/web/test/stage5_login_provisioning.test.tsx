@@ -44,7 +44,7 @@ describe("Stage 5.2 — LoginPage Quick Demo & Provisioning UI", () => {
     expect(screen.queryByText("Manager / Operator")).toBeNull();
     expect(screen.queryByText("Lead Eng")).toBeNull();
     expect(screen.queryByText("Field Tech")).toBeNull();
-    expect(screen.getByPlaceholderText("manager@plant-line.com")).toBeDefined();
+    expect(screen.getByPlaceholderText("alex.morgan@riverside.example")).toBeDefined();
     expect(screen.getByPlaceholderText("••••••••••••")).toBeDefined();
     expect(screen.getByRole("button", { name: /Sign In to Web Workspace/i })).toBeDefined();
   });
@@ -68,7 +68,7 @@ describe("Stage 5.2 — LoginPage Quick Demo & Provisioning UI", () => {
 
     renderLoginPage();
 
-    fireEvent.change(screen.getByPlaceholderText("manager@plant-line.com"), {
+    fireEvent.change(screen.getByPlaceholderText("alex.morgan@riverside.example"), {
       target: { value: "marcus.v@plant.io" },
     });
     fireEvent.change(screen.getByPlaceholderText("••••••••••••"), {
@@ -110,7 +110,7 @@ describe("Stage 5.2 — LoginPage Quick Demo & Provisioning UI", () => {
     fireEvent.change(screen.getByPlaceholderText("e.g. John Doe, Lab Manager"), {
       target: { value: "John Doe" },
     });
-    fireEvent.change(screen.getByPlaceholderText("manager@plant-line.com"), {
+    fireEvent.change(screen.getByPlaceholderText("alex.morgan@riverside.example"), {
       target: { value: "john.doe@plant.io" },
     });
     fireEvent.change(screen.getByPlaceholderText("••••••••••••"), {
@@ -154,7 +154,7 @@ describe("Stage 5.2 — LoginPage Quick Demo & Provisioning UI", () => {
     fireEvent.change(screen.getByPlaceholderText("e.g. John Doe, Lab Manager"), {
       target: { value: "John Doe" },
     });
-    fireEvent.change(screen.getByPlaceholderText("manager@plant-line.com"), {
+    fireEvent.change(screen.getByPlaceholderText("alex.morgan@riverside.example"), {
       target: { value: "john.doe@plant.io" },
     });
     fireEvent.change(screen.getByPlaceholderText("••••••••••••"), {

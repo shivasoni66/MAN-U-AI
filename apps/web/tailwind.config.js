@@ -17,6 +17,14 @@ export default {
         "hairline": "#23252a",
         "hairline-strong": "#34343a",
         "hairline-tertiary": "#3e3e44",
+        // Terminal Cobalt & Electric Blue tokens
+        cobalt: {
+          DEFAULT: "#0057FF",
+          hover: "#1A6BFF",
+          light: "#3B82F6",
+          dark: "#0040C0",
+          subtle: "rgba(0,87,255,0.12)",
+        },
         // Primary violet accent
         primary: {
           DEFAULT: "#5e6ad2",
@@ -42,6 +50,7 @@ export default {
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "-apple-system", "sans-serif"],
+        display: ["Space Grotesk", "sans-serif"],
         mono: ["JetBrains Mono", "Fira Code", "Consolas", "monospace"],
       },
       fontSize: {
@@ -92,6 +101,7 @@ export default {
         "elevated": "0 4px 16px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.4)",
         "panel": "inset 0 1px 0 rgba(255,255,255,0.04)",
         "glow-primary": "0 0 20px rgba(94,106,210,0.25)",
+        "glow-cobalt": "0 0 25px rgba(0,87,255,0.35)",
         "glow-danger": "0 0 20px rgba(239,68,68,0.25)",
       },
       animation: {

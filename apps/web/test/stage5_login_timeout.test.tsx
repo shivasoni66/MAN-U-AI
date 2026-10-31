@@ -44,7 +44,7 @@ describe("Stage 5.4 — Web LoginPage Authentication Timeout & 503 Handling", ()
 
     renderLoginPage();
 
-    fireEvent.change(screen.getByPlaceholderText("manager@plant-line.com"), {
+    fireEvent.change(screen.getByPlaceholderText("alex.morgan@riverside.example"), {
       target: { value: "manager@plant.io" },
     });
     fireEvent.change(screen.getByPlaceholderText("••••••••••••"), {
@@ -77,7 +77,7 @@ describe("Stage 5.4 — Web LoginPage Authentication Timeout & 503 Handling", ()
 
     renderLoginPage();
 
-    fireEvent.change(screen.getByPlaceholderText("manager@plant-line.com"), {
+    fireEvent.change(screen.getByPlaceholderText("alex.morgan@riverside.example"), {
       target: { value: "manager@plant.io" },
     });
     fireEvent.change(screen.getByPlaceholderText("••••••••••••"), {

@@ -30,8 +30,8 @@ describe("Stage 5.3 — Client-Side Route & Static Fallback Resolution", () => {
       </QueryClientProvider>
     );
 
-    expect(screen.getByText("Sign In to Web Workspace")).toBeDefined();
-    expect(screen.getByPlaceholderText("manager@plant-line.com")).toBeDefined();
+    expect(screen.getByRole("button", { name: /Sign In/i })).toBeDefined();
+    expect(screen.getByPlaceholderText("alex.morgan@riverside.example")).toBeDefined();
     expect(screen.queryByText("Manager / Operator")).toBeNull();
     expect(screen.queryByText("Plant Admin")).toBeNull();
     expect(screen.queryByText(/Quick Demo Access/i)).toBeNull();

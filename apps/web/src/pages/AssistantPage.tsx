@@ -618,11 +618,13 @@ function MessageBubble({
   onSpeak,
   isSpeaking,
   onFeedback,
+  onAskSimpler,
 }: {
   message: Message;
   onSpeak: (text: string) => void;
   isSpeaking: boolean;
   onFeedback: (id: string, rating: "up" | "down") => void;
+  onAskSimpler?: () => void;
 }) {
   const isUser = message.role === "user";
 
