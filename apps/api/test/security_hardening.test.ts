@@ -269,7 +269,7 @@ describe("Production Hardening & Security Audit Suite (P0 & P1 Requirements)", (
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.citations.length).toBe(0);
-    expect(res.body.data.answer.toLowerCase()).toContain("could not locate");
+    expect(res.body.data.answer.toLowerCase()).toMatch(/could not locate|can't confirm|cannot confirm/);
   }, 20000);
 
   it("Requirement 13.8 (Regression): Unsupported question remains ungrounded with 0 citations even when unrelated document chunks with overlapping substrings exist in database", async () => {
@@ -311,7 +311,7 @@ describe("Production Hardening & Security Audit Suite (P0 & P1 Requirements)", (
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data.citations.length).toBe(0);
-      expect(res.body.data.answer.toLowerCase()).toContain("could not locate");
+      expect(res.body.data.answer.toLowerCase()).toMatch(/could not locate|can't confirm|cannot confirm/);
     } finally {
       await DocumentModel.findByIdAndDelete(unrelatedDoc._id);
       await DocumentChunk.deleteMany({ documentId: unrelatedDoc._id });

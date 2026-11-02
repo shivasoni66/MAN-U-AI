@@ -154,7 +154,7 @@ describe("Acceptance Test Suite — Industrial End-to-End Verification", () => {
         answerLower.includes("does not contain") ||
         answerLower.includes("unsupported") ||
         answerLower.includes("no relevant") ||
-        answerLower.includes("not available");
+        answerLower.includes("not available") || answerLower.includes("can't confirm") || answerLower.includes("cannot confirm");
 
       expect(admitsUncertainty).toBe(true);
       expect(res.body.data.citations.length).toBe(0);

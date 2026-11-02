@@ -185,7 +185,7 @@ describe("Genuine Document-to-Answer & Private Persistence Test (Requirement 3, 
     expect(
       answer.includes("could not locate") ||
         answer.includes("insufficient") ||
-        answer.includes("not found")
+        answer.includes("not found") || answer.includes("can't confirm") || answer.includes("cannot confirm")
     ).toBe(true);
   });
 

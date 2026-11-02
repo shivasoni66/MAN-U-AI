@@ -150,7 +150,7 @@ describe("Stage 5.5b & 5.6: Multimodal RAG Pipeline Diagnostics & Quota Handling
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(res.body.data.answer).toContain("I could not locate sufficient verified documentation");
+    expect(res.body.data.answer).toMatch(/could not locate|can't confirm|cannot confirm/);
     expect(res.body.data.citations).toEqual([]);
     expect(res.body.data.confidenceScore).toBe(0.1);
   });

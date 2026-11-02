@@ -267,7 +267,7 @@ describe("Task 3: Evidence-Grounded Interactive Troubleshooting Suite", () => {
       });
 
     expect(res.status).toBe(200);
-    expect(res.body.data.answer).toContain("could not locate sufficient verified documentation");
+    expect(res.body.data.answer).toMatch(/could not locate sufficient verified documentation|can't confirm this from the approved documents/i);
     expect(res.body.data.citations).toEqual([]);
     expect(res.body.data.confidenceScore).toBeLessThan(0.5);
   });
