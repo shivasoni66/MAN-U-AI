@@ -810,11 +810,49 @@ ${figureSection}
 WORKER QUESTION:
 ${query}
 
+MANDATORY RULES FOR EVIDENCE-GROUNDED INTERACTIVE TROUBLESHOOTING:
+1. Grounding & Zero Fabrication:
+   - Ground all diagnostic instructions, technical parameters, tolerances, torques, and fault codes strictly in the RETRIEVED DOCUMENT EVIDENCE above.
+   - NEVER fabricate manual instructions, torque ratings, wire numbers, or diagnostic findings.
+   - You may ONLY cite source documents and page numbers that actually exist in the RETRIEVED DOCUMENT EVIDENCE above. Never invent external standards or document citations.
+
+2. Safety & Interlocks First:
+   - Always put safety warnings, mandatory PPE, and energy isolation requirements at the very beginning of the response.
+   - NEVER allow a user to proceed with maintenance before highlighting de-energization and safety interlocks.
+
+3. Interactive Sequential Guidance (One Step at a Time):
+   - Do NOT output an entire multi-step repair procedure at once.
+   - Present ONE actionable diagnostic check, inspection, or measurement at a time.
+   - State clearly:
+     a) What specific action to take.
+     b) Exactly what to observe, measure, or listen for (including acceptable vs abnormal criteria).
+     c) Prompt the technician to perform this check and report back the observation before choosing the next step.
+
+4. Session Context & Completed Checks:
+   - Carry forward all symptoms, completed checks, and test results from the DIAGNOSTIC SESSION HISTORY above.
+   - Do NOT ask the technician to repeat checks they have already completed.
+
+5. Handling Uncertainty & Distinguishing Hypotheses:
+   - Clearly distinguish between confirmed facts and diagnostic hypotheses.
+   - If retrieval does not provide sufficient evidence, explicitly state the limitation.
+
+${relevantFigures.length > 0 ? `6. Multimodal & Figure-Aware Grounding (Strict Rules):
+   - Ground visual observations ONLY in what is directly legible and visible in the attached figures.
+   - Distinguish each claim as either "Direct Visual Observation from [Figure ID]" or "Procedural Guidance from Manual Text".
+   - ZERO FABRICATION: NEVER hallucinate, guess, or invent component labels, terminal/pin numbers, wire colors, dimensions, warning icons, or unreadable annotations.
+   - If an image is unreadable, blurry, or lacks a specific requested detail, explicitly state that the detail is not legible.
+   - Cite Figure ID, Document, and Page number.` : `6. Figure Mentions in Text (No Figures Attached):
+   - No figure or schematic images are attached to this query.
+   - Refer to figures strictly as textual manual references.
+   - Do NOT claim to have visually examined or observed any figure or diagram.
+   - NEVER guess, extrapolate, or describe what the figure depicts.
+   - Report the figure reference honestly.`}
+
 Return JSON only:`;
 
     // 8. Stage: Generative Answer Synthesis & Validation
     let workerAnswer: WorkerResponseDTO;
-    let answer: string;
+    let answer: string = "";
 
     const parseAndValidate = (rawText: string): { valid: boolean; data?: WorkerResponseDTO; error?: string } => {
       try {
@@ -872,6 +910,7 @@ Return JSON only:`;
             sources: sourcesList.slice(0, 2),
             follow_up: null,
           };
+          answer = trimmedRaw;
         } else {
           console.warn(
             `[RAG Pipeline] [Request ID: ${reqId}] Initial generation failed validation (${initialValidation.error}). Retrying once with corrective prompt.`
@@ -936,23 +975,64 @@ Return JSON only:`;
         follow_up: "Did you verify zero energy before beginning?",
         simpler_applied: isSimpler,
       };
+
+      let safetyHeader = "";
+      if (isBypassRequested) {
+        safetyHeader = `> ⛔ **CRITICAL SAFETY VIOLATION PREVENTED:**\n> Safety interlocks, limit switches, and physical guards must **NEVER** be bypassed, bridged, or defeated. All inspections must follow authorized Lockout/Tagout (LOTO) isolation protocols with zero-energy verification.\n\n`;
+      } else if (isCritical) {
+        safetyHeader = `> ⚠️ **CRITICAL SAFETY MANDATE:** Ensure equipment is properly isolated and verified at zero energy state before undertaking physical inspections.\n\n`;
+      }
+
+      let figureNotice = "";
+      if (relevantFigures.length > 0) {
+        figureNotice =
+          `\n#### Associated Technical Figures (Manual Page Reference):\n` +
+          relevantFigures
+            .map(
+              (fig) =>
+                `- **${fig.figureId}** (Page ${fig.page}): ${fig.title || fig.caption || "Technical diagram"} [Document: ${fig.documentTitle}]`
+            )
+            .join("\n") +
+          `\n*(Generative visual analysis unavailable in offline fallback mode. Please inspect the manual figure directly.)*\n`;
+      }
+
+      answer = `[NOTICE: AI Generative Service Unavailable — Grounded Documentation Mode]
+
+${safetyHeader}### Grounded Technical Diagnostic Guidance
+${equipmentContext ? `**Equipment:** ${equipmentContext.name}${equipmentContext.model ? ` (${equipmentContext.model})` : ""}\n` : ""}
+**Diagnostic Hypothesis (Preliminary — Unconfirmed):**
+The following preliminary hypothesis is derived directly from authorized technical documentation. This hypothesis is unconfirmed until physical observations are verified.
+
+**Recommended Non-Invasive Diagnostic Step:**
+Based on verified documentation from **${firstChunk?.documentTitle}** (Page ${firstChunk?.page}, Section: ${firstChunk?.section || "General"}):
+
+> ${firstChunk?.text}
+
+**Action Required:**
+Please perform the check described above and observe the specified condition. **Do not perform any invasive teardown until the preliminary check is completed and confirmed.**
+
+*Report your observation back to the assistant to determine the subsequent diagnostic step.*
+${figureNotice}
+#### Verified Documentation Excerpts:
+${retrieved.map((r, i) => `[${i + 1}] **${r.chunk.documentTitle}** (Page ${r.chunk.page}, ${r.chunk.section || "General"}):\n> ${r.chunk.text}`).join("\n\n")}`;
     }
 
-    // Synthesize human-readable markdown answer from structured workerAnswer
-    if (workerAnswer.status === "answered") {
-      const warnBlocks = workerAnswer.warnings.map((w) => `> ⚠️ **${w.text}**`).join("\n");
-      const stepBlocks = workerAnswer.steps.map((s) => `${s.n}. ${s.text}`).join("\n");
-      const valBlocks = workerAnswer.values.map((v) => `- **${v.label}:** ${v.value} ${v.unit}`.trim()).join("\n");
-      answer = [
-        warnBlocks,
-        `### ${workerAnswer.headline}`,
-        valBlocks,
-        stepBlocks,
-      ].filter(Boolean).join("\n\n");
-    } else {
-      answer = workerAnswer.message;
+    // Synthesize human-readable markdown answer from structured workerAnswer if not already explicitly formatted
+    if (!answer) {
+      if (workerAnswer.status === "answered") {
+        const warnBlocks = workerAnswer.warnings.map((w) => `> ⚠️ **${w.text}**`).join("\n");
+        const stepBlocks = workerAnswer.steps.map((s) => `${s.n}. ${s.text}`).join("\n");
+        const valBlocks = workerAnswer.values.map((v) => `- **${v.label}:** ${v.value} ${v.unit}`.trim()).join("\n");
+        answer = [
+          warnBlocks,
+          `### ${workerAnswer.headline}`,
+          valBlocks,
+          stepBlocks,
+        ].filter(Boolean).join("\n\n");
+      } else {
+        answer = workerAnswer.message;
+      }
     }
-
     // 9. Extract verifiable citations strictly from the retrieved pool, attaching genuine visual figures when available
     const citations: CitationDTO[] = retrieved.map((r, i) => {
       const pageKey = `${r.chunk.documentId}_${r.chunk.page}`;

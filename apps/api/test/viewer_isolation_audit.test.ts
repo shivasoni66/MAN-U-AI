@@ -355,7 +355,7 @@ describe("MAN-U-AI Task 19.9.10 & 19.9.11 — Viewer Authorization, RAG Isolatio
     expect(ragRes.status).toBe(200);
     const leakedCitation = (ragRes.body.data.citations || []).find((c: any) => c.documentId === restrictedDoc._id.toString());
     expect(leakedCitation).toBeUndefined();
-    expect(ragRes.body.data.answer.toLowerCase()).toContain("could not locate");
+    expect(ragRes.body.data.answer.toLowerCase()).toMatch(/could not locate|can't confirm|cannot confirm/);
     expect(ragRes.body.data.answer).not.toContain("0.045 mm");
   });
 
